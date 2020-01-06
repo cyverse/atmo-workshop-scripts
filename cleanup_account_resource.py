@@ -29,14 +29,14 @@ def main():
         for instance in all_instances:
             print(instance["name"])
             print(instance["uuid"])
-            #delete_instance(token, instance)
+            delete_instance(token, instance)
 
         # delete all volumes
         all_volumes = list_volume_of_user(token)
         for vol in all_volumes:
             print(vol["name"])
             print(vol["uuid"])
-            #delete_volume(token, vol)
+            delete_volume(token, vol)
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Clean up all resources allocated by one or more accounts, use csv file for more than one account")
