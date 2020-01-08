@@ -13,72 +13,147 @@ Clean up all the resources(instances, volumes) allocated by 1 or more accounts.
 For 1 account one could use the --username cmd option, and enter the password when prompt.
 For >= 1 accounts use the --csv cmd option to pass in a csv file that contains "username" and "password" field.
 
-"""
+For jetstream, only token is accepted
 
+"""
+cyverse_base_url = "atmo.cyverse.org"
+jetstream_base_url = "use.jetstream-cloud.org" 
+global api_base_url
+api_base_url = cyverse_base_url
 
 def main():
     # read accounts credentials
     account_list = parse_args()
 
-    for account in account_list:
-        # obtain token
-        token = login(account["username"], account["password"])
+    for row_index, account in enumerate(account_list):
+        try:
+            # obtain token
+            if "token" in account:
+                token = account["token"]    # from csv
+            else:
+                token = login(account["username"], account["password"])
 
-        # delete all instances
-        all_instances = list_instance_of_user(token)
-        for instance in all_instances:
-            print(instance["name"])
-            print(instance["uuid"])
-            delete_instance(token, instance)
+            # delete all instances
+            all_instances = list_instance_of_user(token)
+            for instance in all_instances:
+                print(instance["name"])
+                print(instance["uuid"])
+                delete_instance(token, instance)
 
-        # delete all volumes
-        all_volumes = list_volume_of_user(token)
-        for vol in all_volumes:
-            print(vol["name"])
-            print(vol["uuid"])
-            delete_volume(token, vol)
+            # delete all volumes
+            all_volumes = list_volume_of_user(token)
+            for vol in all_volumes:
+                print(vol["name"])
+                print(vol["uuid"])
+                delete_volume(token, vol)
+
+            # find the default project 
+            all_projects = list_project_of_user(token)
+            username = account_username(token)
+            default_project = False
+            for project in all_projects:
+                if project["name"] == username:
+                    default_project = project
+                    break
+            # create a default projects if do not exist
+            if not default_project:
+                default_project = create_project(token, username, "", username)
+
+            # delete all extra projects
+            for project in all_projects:
+                if project["uuid"] != default_project["uuid"]:
+                    delete_project(token, project)
+
+        except:
+            print("Errors when free up resources for account in row {}".format(row_index))
+            raise
+            exit(1)
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Clean up all resources allocated by one or more accounts, use csv file for more than one account")
     parser.add_argument("--username", dest="username", type=str, help="username of the cyverse account, only specify 1 account")
     parser.add_argument("--csv", dest="csv_filename", type=str, help="filename of the csv file that contains credential for all the accounts")
+    parser.add_argument("--cyverse", dest="cyverse", action="store_true", help="Target platform: Cyverse Atmosphere (default)")
+    parser.add_argument("--jetstream", dest="jetstream", action="store_true", help="Target platform: Jetstream")
+    parser.add_argument("--token", dest="token", action="store_true", help="use access token instead of username & password, default for Jetstream")
 
     args = parser.parse_args()
+
+    global api_base_url
+    # target platform
+    if args.jetstream:
+        api_base_url = jetstream_base_url
+        args.token = True   # Use token on Jetstream
+    else:
+        args.cyverse = True
+        api_base_url = cyverse_base_url
+
+    if args.username and args.token:
+        print("Conflict option, --username and --token")
+        parser.print_help()
+        exit(1)
+
+    if args.username and args.csv_filename:
+        print("Conflict option, --username and --csv")
+        parser.print_help()
+        exit(1)
+
+    if args.jetstream and args.username:
+        print("Conflict option, --jetsream and --username")
+        parser.print_help()
+        exit(1)
+
     if args.username:
         account = {}
         account["username"] = args.username
         account["password"] = getpass.getpass()
         account_list = [account]
     elif args.csv_filename:
-        account_list = read_account_from_csv(args.csv_filename)
+        account_list = read_account_from_csv(args.csv_filename, args.token)
+    elif args.token:
+        account = {}
+        account["token"] = getpass.getpass("Access token: ")
+        account_list = [account]
     else:
         print("Neither --username or --csv is specified, one is needed\n")
         parser.print_help()
         exit(1)
+
     return account_list
 
-def read_account_from_csv(filename):
+def read_account_from_csv(filename, use_token):
     account_list = []
 
     with open(filename) as csvfile:
         csv_reader = csv.reader(csvfile)
         field = []
 
+        token = False
         for row_index, row in enumerate(csv_reader):
             # find the username and password field
             if not field:
                 field = row
-                username_index = find_field(field, "username")
-                password_index = find_field(field, "password")
+                if use_token:
+                    token_index = find_field(field, "token")
+                else:
+                    username_index = find_field(field, "username")
+                    password_index = find_field(field, "password")
                 continue # skip the 1st row
 
-            print_row(row, username_index, password_index)
-
-            try:
-                account = row_to_account(row, username_index, password_index)
-            except:
-                print("row {} missing username or password field".format(row_index))
-                raise
+            if use_token:
+                try:
+                    account = {"token" : row[token_index]}
+                    print(account["token"][:3] + "*****")
+                except:
+                    print("row {} missing token field".format(row_index))
+                    exit(1)
+            else:
+                try:
+                    account = row_to_account(row, username_index, password_index)
+                    print_row(row, username_index, password_index)
+                except:
+                    print("row {} missing username or password field".format(row_index))
+                    exit(1)
             account_list.append(account)
 
     return account_list
@@ -123,65 +198,69 @@ def login(username, password):
 def list_instance_of_user(token):
     try:
         headers = {}
-        headers["Host"] = "atmo.cyverse.org"
+        headers["Host"] = api_base_url
         headers["Accept"] = "application/json;q=0.9,*/*;q=0.8"
         headers["Authorization"] = "TOKEN " + token
 
-        resp = requests.get("https://atmo.cyverse.org/api/v2/instances", headers=headers)
+        url = "https://" + api_base_url + "/api/v2/instances"
+        resp = requests.get(url, headers=headers)
         resp.raise_for_status()
         json_obj = json.loads(resp.text)
     except requests.exceptions.HTTPError:
         print("Fail to list all the instances")
-        exit(1)
+        print(resp.text)
+        raise
     except json.decoder.JSONDecodeError:
         print("Fail to parse response body as JSON")
-        exit(1)
+        raise
     return json_obj["results"]
 
 def list_project_of_user(token):
     try:
         headers = {}
-        headers["Host"] = "atmo.cyverse.org"
+        headers["Host"] = api_base_url
         headers["Accept"] = "application/json;q=0.9,*/*;q=0.8"
         headers["Authorization"] = "TOKEN " + token
 
-        resp = requests.get("https://atmo.cyverse.org/api/v2/projects", headers=headers)
+        url = "https://" + api_base_url + "/api/v2/projects"
+        resp = requests.get(url, headers=headers)
         resp.raise_for_status()
         json_obj = json.loads(resp.text)
     except requests.exceptions.HTTPError:
         print("Fail to list all the projects")
-        exit(1)
+        raise
     except json.decoder.JSONDecodeError:
         print("Fail to parse response body as JSON")
-        exit(1)
+        raise
     return json_obj["results"]
 
 def list_volume_of_user(token):
     try:
         headers = {}
-        headers["Host"] = "atmo.cyverse.org"
+        headers["Host"] = api_base_url
         headers["Accept"] = "application/json;q=0.9,*/*;q=0.8"
         headers["Authorization"] = "TOKEN " + token
 
-        resp = requests.get("https://atmo.cyverse.org/api/v2/volumes", headers=headers)
+        url = "https://" + api_base_url + "/api/v2/volumes"
+        resp = requests.get(url, headers=headers)
         resp.raise_for_status()
         json_obj = json.loads(resp.text)
     except requests.exceptions.HTTPError:
         print("Fail to list all the volumes")
-        exit(1)
+        raise
     except json.decoder.JSONDecodeError:
         print("Fail to parse response body as JSON")
-        exit(1)
+        raise
     return json_obj["results"]
 
 def reboot_instance(token, instance_json):
     try:
         headers = {}
-        headers["Host"] = "atmo.cyverse.org"
+        headers["Host"] = api_base_url
         headers["Accept"] = "application/json;q=0.9,*/*;q=0.8"
         headers["Authorization"] = "TOKEN " + token
 
-        url = "https://atmo.cyverse.org/api/v1"
+        url = "https://" + api_base_url + "/api/v1"
         url += "/provider/" + instance_json["provider"]["uuid"]
         url += "/identity/" + instance_json["identity"]["uuid"]
         url += "/instance/" + instance_json["uuid"]
@@ -199,19 +278,19 @@ def reboot_instance(token, instance_json):
         print(json_formatted_str)
     except requests.exceptions.HTTPError:
         print("Fail to list all the volumes")
-        exit(1)
+        raise
     except json.decoder.JSONDecodeError:
         print("Fail to parse response body as JSON")
-        exit(1)
+        raise
 
 def delete_instance(token, instance_json):
     try:
         headers = {}
-        headers["Host"] = "atmo.cyverse.org"
+        headers["Host"] = api_base_url
         headers["Accept"] = "application/json;q=0.9,*/*;q=0.8"
         headers["Authorization"] = "TOKEN " + token
 
-        url = "https://atmo.cyverse.org/api/v1"
+        url = "https://" + api_base_url + "/api/v1"
         url += "/provider/" + instance_json["provider"]["uuid"]
         url += "/identity/" + instance_json["identity"]["uuid"]
         url += "/instance/" + instance_json["uuid"]
@@ -224,19 +303,19 @@ def delete_instance(token, instance_json):
         print(json_formatted_str)
     except requests.exceptions.HTTPError:
         print("Fail to list all the volumes")
-        exit(1)
+        raise
     except json.decoder.JSONDecodeError:
         print("Fail to parse response body as JSON")
-        exit(1)
+        raise
 
 def delete_project(token, project_json):
     try:
         headers = {}
-        headers["Host"] = "atmo.cyverse.org"
+        headers["Host"] = api_base_url
         headers["Accept"] = "application/json;q=0.9,*/*;q=0.8"
         headers["Authorization"] = "TOKEN " + token
 
-        url = "https://atmo.cyverse.org/api/v2"
+        url = "https://" + api_base_url + "/api/v2"
         url += "/projects/" + str(project_json["id"])
 
         resp = requests.delete(url, headers=headers)
@@ -249,19 +328,19 @@ def delete_project(token, project_json):
             print(json_formatted_str)
     except requests.exceptions.HTTPError:
         print("Fail to list all the volumes")
-        exit(1)
+        raise
     except json.decoder.JSONDecodeError:
         print("Fail to parse response body as JSON")
-        exit(1)
+        raise
 
 def delete_volume(token, volume_json):
     try:
         headers = {}
-        headers["Host"] = "atmo.cyverse.org"
+        headers["Host"] = api_base_url
         headers["Accept"] = "application/json;q=0.9,*/*;q=0.8"
         headers["Authorization"] = "TOKEN " + token
 
-        url = "https://atmo.cyverse.org/api/v1"
+        url = "https://" + api_base_url + "/api/v1"
         url += "/provider/" + volume_json["provider"]["uuid"]
         url += "/identity/" + volume_json["identity"]["uuid"]
         url += "/volume/" + volume_json["uuid"]
@@ -275,10 +354,64 @@ def delete_volume(token, volume_json):
         print(json_formatted_str)
     except requests.exceptions.HTTPError:
         print("Fail to list all the volumes")
-        exit(1)
+        raise
     except json.decoder.JSONDecodeError:
         print("Fail to parse response body as JSON")
-        exit(1)
+        raise
+
+def create_project(token, name, description, owner):
+    try:
+        headers = {}
+        headers["Host"] = api_base_url
+        headers["Accept"] = "application/json;q=0.9,*/*;q=0.8"
+        headers["Authorization"] = "TOKEN " + token
+
+        url = "https://" + api_base_url + "/api/v2/projects"
+
+        data = {}
+        data["name"] = name
+        data["description"] = description
+        data["owner"] = owner
+
+        resp = requests.post(url, headers=headers, data=data)
+        resp.raise_for_status()
+
+        json_obj = json.loads(resp.text)
+        print("Project created")
+        return json_obj
+    except requests.exceptions.HTTPError:
+        print("Fail to create project")
+        raise
+    except json.decoder.JSONDecodeError:
+        print("Fail to parse response body as JSON")
+        raise
+
+def account_username(token):
+    profile = user_profile(token)
+    return profile["username"]
+
+def user_profile(token):
+    try:
+        headers = {}
+        headers["Host"] = api_base_url
+        headers["Accept"] = "application/json;q=0.9,*/*;q=0.8"
+        headers["Authorization"] = "TOKEN " + token
+
+        url = "https://" + api_base_url + "/api/v1/profile"
+
+        resp = requests.get(url, headers=headers)
+        resp.raise_for_status()
+
+        json_obj = json.loads(resp.text)
+        json_formatted_str = json.dumps(json_obj, indent=2)
+
+        return json_obj
+    except requests.exceptions.HTTPError:
+        print("Fail to list profile")
+        raise
+    except json.decoder.JSONDecodeError:
+        print("Fail to parse response body as JSON")
+        raise
 
 
 
