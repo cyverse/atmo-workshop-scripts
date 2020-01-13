@@ -53,6 +53,8 @@ Launched instance off image for 1 or more account.
 
 `--csv` pass in a csv file containing credential (username and password) of accounts
 
+`--dont-wait` script will not wait for the instance launched to become fully active (status: active, activity: N/A), by default, script will wait for the instance to be fully active
+
 #### Descriptions:
 
 Instance will be
