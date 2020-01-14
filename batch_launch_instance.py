@@ -448,7 +448,7 @@ def main():
             for launch in as_completed(futures):
                 if not launch.result():
                     instance = launch.result()
-                    print("Instance failed to launched in time, {}, last_status: {}".format(str(instance), instance.last_status))
+                    print("Instance failed to become fully active in time, {}, last_status: {}".format(str(instance), instance.last_status))
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Clean up all resources allocated by one or more accounts, use csv file for more than one account")

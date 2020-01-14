@@ -67,7 +67,7 @@ Failure during the launch of an instance does not terminate the script, the scri
 or waiting for instance to be active.
 
 By default the script will wait for all instances launched to become fully active (status: active, activity: N/A),
-but will timeout 30min after launched and report as "failed to launch in time"
+but will timeout 30min after launched and report as "failed to become fully active in time"
 
 Instance will be
 
