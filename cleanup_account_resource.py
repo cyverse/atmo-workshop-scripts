@@ -115,7 +115,7 @@ def parse_args():
         account["token"] = getpass.getpass("Access token: ")
         account_list = [account]
     else:
-        print("Neither --username or --csv is specified, one is needed\n")
+        print("Neither --username or --csv or --token is specified, one is needed\n")
         parser.print_help()
         exit(1)
 
