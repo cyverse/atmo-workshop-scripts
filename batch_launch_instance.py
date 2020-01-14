@@ -137,7 +137,7 @@ class APIClient:
         img_list = self.image_list()
         img = list_contains(img_list, "id", id)
         if not img:
-            raise RuntimeError("No image with the id of " + id)
+            raise RuntimeError("No image with the id of " + str(id))
         return img
 
     def image_list(self):
@@ -174,10 +174,10 @@ class APIClient:
             return json_obj
         except requests.exceptions.HTTPError:
             print("Fail to list profile")
-            exit(1)
+            raise
         except json.decoder.JSONDecodeError:
             print("Fail to parse response body as JSON")
-            exit(1)
+            raise
     
     def launch_instance_off_image(self, name, source_uuid, size_alias, alloc_src_uuid, project_uuid, identity_uuid):
         try:
@@ -187,7 +187,7 @@ class APIClient:
             url = "/api/v2/instances"
 
             data = {}
-            data["source_alias"] = "320b6a20-38eb-47a6-a33c-1216b1aa3399"
+            data["source_alias"] = source_uuid
             data["size_alias"] = size_alias
             data["allocation_source_id"] = alloc_src_uuid
             data["name"] = name
@@ -203,7 +203,7 @@ class APIClient:
             return json_obj
         except requests.exceptions.HTTPError:
             print("Fail to launch instance with the specified image")
-            exit(1)
+            raise
 
     def instance_status(self, instance_id):
         try:
@@ -240,7 +240,7 @@ class APIClient:
             print("Fail to parse response body as JSON")
             raise
 
-    def delete_instance(self, proivder_uuid, identity_uuid, instance_uuid, action, reboot_type=""):
+    def delete_instance(self, proivder_uuid, identity_uuid, instance_uuid):
         try:
             url = "/api/v1"
             url += "/provider/" + proivder_uuid
@@ -321,15 +321,24 @@ class APIClient:
 
 class Instance:
 
-    def  __init__(self, api_client, image_id, image_version, size, name="", project=""):
+    def  __init__(self, api_client, image_id, image_version, size, opt=None):
         self.api_client = api_client
-        self.name = name
-        self.project = project
         self.image_id = image_id
         self.image_version = image_version
         self.size = size
         self.instance_json = {}
 
+        self.name = ""
+        self.project = ""
+        self.alloc_src = ""
+        if opt:
+            if "name" in opt:
+                self.name = opt["name"]
+            if "project" in opt:
+                self.project = opt["project"]
+            if "alloc_src" in opt:
+                self.alloc_src = opt["alloc_src"]
+        
         self.owner = self.api_client.account_username()
 
     @retry_3
@@ -344,14 +353,17 @@ class Instance:
         if not size_entry:
             raise RuntimeError("Invalid size")
 
-        alloc_src = self.api_client.get_allocation_source(self.owner)
+        if self.alloc_src:
+            alloc_src = self.api_client.get_allocation_source(self.alloc_src)
+        else:
+            alloc_src = self.api_client.get_allocation_source(self.owner)
         project = self.api_client.get_project(self.owner)
         identity = self.api_client.get_identity(self.owner)
         source_uuid = self.api_client.list_machines_of_image_version(self.image_id, self.image_version)[0]["uuid"]
         if not self.name:
             self.name = self.api_client.get_image(self.image_id)["name"]
 
-        self.instance_json = self.api_client.launch_instance_off_image(self.owner, source_uuid, size_entry["alias"], alloc_src["uuid"], project["uuid"], identity["uuid"])
+        self.instance_json = self.api_client.launch_instance_off_image(self.name, source_uuid, size_entry["alias"], alloc_src["uuid"], project["uuid"], identity["uuid"])
         self.launch_time = time.mktime(time.localtime())
         self.id = self.instance_json["id"]
 
@@ -359,9 +371,14 @@ class Instance:
         status = ""
         acivity = ""
         while not (status == "active" and acivity == ""):
-            new_status = self.status()
+            try:
+                new_status = self.status()
+            except Exception as e:
+                print(e)
+                False
+            # only print updates if new status or new activity
             if new_status != (status, acivity):
-                print("instance id: {}, status: {}, activity: {}".format(self.id, status, acivity))
+                print("instance id: {}, status: {}, activity: {}".format(self.id, new_status[0], new_status[1]))
             status, acivity = new_status
 
             # timeout after 30min
@@ -380,12 +397,9 @@ class Instance:
 
     def delete(self):
         try:
-            url = "/api/v1"
-            url += "/provider/" + self.instance_json["provider"]["uuid"]
-            url += "/identity/" + self.instance_json["identity"]["uuid"]
-            url += "/instance/" + self.instance_json["uuid"]
-
-            json_obj = self.api_client.delete_instance(url)
+            json_obj = self.api_client.delete_instance(self.instance_json["provider"]["uuid"],
+                self.instance_json["identity"]["uuid"],
+                self.instance_json["uuid"])
         except requests.exceptions.HTTPError:
             print("Fail to delete instance")
             raise
@@ -413,18 +427,6 @@ def main():
     # read accounts credentials
     instance_list = parse_args()
 
-    def launch_instance(row, row_index):
-        api_client = APIClient(platform="cyverse")
-        api_client.login(row["username"], row["password"])
-        try:
-            instance = Instance(api_client, row["image"], row["image_version"], row["size"])
-            instance.launch()
-            print("Instance launched, username: {}, id: {}".format(instance.owner, instance.id))
-        except Exception:
-            print("row {} failed".format(row_index))
-            instance = None
-        return instance
-
     launched_instances = []
 
     # launch instance for each row (in csv or from arg)
@@ -435,105 +437,165 @@ def main():
             if instance_json:
                 launched_instances.append(instance_json)
 
+    print("==============================")
+    print("{} instance launched".format(len(launched_instances)))
+    print("\n\n")
+
     if not args.dont_wait:
         # wait for instance to be active
         with ThreadPoolExecutor(max_workers=4) as executor:
             futures = [ executor.submit(Instance.wait_active, instance) for instance in launched_instances ]
-            for instance in as_completed(futures):
-                if not instance.result():
+            for launch in as_completed(futures):
+                if not launch.result():
+                    instance = launch.result()
                     print("Instance failed to launched in time, {}, last_status: {}".format(str(instance), instance.last_status))
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Clean up all resources allocated by one or more accounts, use csv file for more than one account")
-    parser.add_argument("--username", dest="username", type=str, help="usernameing of the cyverse account, only specify 1 account")
-    parser.add_argument("--csv", dest="csv_filename", type=str, help="filename of the csv file that contains credential for all the accounts")
+    parser.add_argument("--csv", dest="csv_filename", type=str, required=True, help="filename of the csv file that contains credential for all the accounts")
     parser.add_argument("--dont-wait", dest="dont_wait", action="store_true", default=False, help="do not wait for instance to be fully launched (active)")
+    parser.add_argument("--cyverse", dest="cyverse", action="store_true", help="Target platform: Cyverse Atmosphere (default)")
+    parser.add_argument("--jetstream", dest="jetstream", action="store_true", help="Target platform: Jetstream")
+    parser.add_argument("--token", dest="token", action="store_true", help="use access token instead of username & password, default for Jetstream")
 
     global args
     args = parser.parse_args()
 
-    if args.username:
-        account = {}
-        account["username"] = args.username
-        account["password"] = getpass.getpass()
-        account_list = [account]
-    elif args.csv_filename:
-        account_list = read_info_from_csv(args.csv_filename)
+    # target platform
+    if args.jetstream:
+        args.token = True   # Use token on Jetstream
     else:
-        print("Neither --username or --csv is specified, one is needed\n")
+        args.cyverse = True
+
+    if args.csv_filename:
+        account_list = read_info_from_csv(args.csv_filename, args.token)
+    else:
+        print("--csv required but not specified\n")
         parser.print_help()
         exit(1)
     return account_list
 
-def read_info_from_csv(filename):
+def read_info_from_csv(filename, use_token):
     instance_list = []
 
     with open(filename) as csvfile:
         csv_reader = csv.reader(csvfile)
-        field = []
+        all_fields = []
 
-        for row_index, row in enumerate(csv_reader):
-            # find the username and password field
-            if not field:
-                field = row
-                username_index = find_field(field, "username")
-                password_index = find_field(field, "password")
-                image_url_index = find_field(field, "image")
-                image_ver_index = find_field(field, "image version")
-                size_index = find_field(field, "instance size")
-                continue # skip the 1st row
+        try:
+            for row_index, row in enumerate(csv_reader):
+                # find the relevant field
+                if not all_fields:
+                    all_fields = row
+                    required = ["image", "image version", "instance size"]
+                    optional = ["instance name", "project name", "allocation source"]
+                    if use_token:
+                        required.append("token")
+                    else:
+                        required.append("username")
+                        required.append("password")
+                    required_index, optional_index = find_fields(all_fields, required, optional)
+                    continue # skip the 1st row
 
-            print_row(row, username_index, password_index)
-
-            try:
-                instance = parse_row(row, username_index, password_index, image_url_index, image_ver_index, size_index)
-            except:
-                print("row {} missing username or password field".format(row_index))
-                raise
-            instance_list.append(instance)
+                try:
+                    instance = parse_row(use_token, row, required_index, optional_index)
+                    print_row(instance)
+                except Exception as e:
+                    raise RuntimeError("row {} missing reuquired field".format(row_index))
+                instance_list.append(instance)
+        except RuntimeError as e:
+            print(e)
+            exit(1)
 
     return instance_list
 
-def find_field(all_fields, field_name):
+def find_fields(all_fields, required_fields, optional_fields):
     """
     Find the index of a field in the field row
     """
+    required_fields_index = {}
+    optional_fields_index = {}
     for i, field in enumerate(all_fields):
-        if field == field_name:
-            return i
-    print("No field called " + field_name)
-    exit(1)
+        if field in required_fields:
+            required_fields_index[field] = i
+        elif field in optional_fields:
+            optional_fields_index[field] = i
+    if len(required_fields_index) != len(required_fields):
+        for field in required_fields:
+            if field not in required_fields_index:
+                raise RuntimeError("No field called " + field)
+    return required_fields_index, optional_fields_index
 
-def parse_row(row, username_index, password_index, image_url_index, image_ver_index, size_index):
+def image_id_from_url(url):
     try:
-        instance = {}
-        instance["username"] = row[username_index]
-        instance["password"] = row[password_index]
-        url = row[image_url_index]
-        image_id_str = url.split("/")[-1]   # get the image id from the url
-        instance["image"] = int(image_id_str)
-        instance["image_version"] = row[image_ver_index]
-        instance["size"] = row[size_index]
+        # get the image id from the url
+        image_id_str = url.split("/")[-1]
+        return int(image_id_str)
     except IndexError:
         # unable to find the image id from url
         print("Bad image url")
-        exit(1)
+        raise
     except ValueError:
         # unable to convert image id to integer
         print("image id not integer")
-        exit(1)
+        raise
 
+def parse_row(use_token, row, required_index, optional_index):
+    instance = {}
+    if use_token:
+        instance["token"] = row[required_index["token"]]
+    else:
+        instance["username"] = row[required_index["username"]]
+        instance["password"] = row[required_index["username"]]
+
+    instance["image"] = image_id_from_url(row[required_index["image"]])
+    instance["image_version"] = row[required_index["image version"]]
+    instance["size"] = row[required_index["instance size"]]
+    if "instance name" in optional_index:
+        instance["name"] = row[optional_index["instance name"]]
+    if "allocation source" in optional_index:
+        instance["alloc_src"] = row[optional_index["allocation source"]]
+    if "project name" in optional_index:
+        instance["project"] = row[optional_index["project name"]]
     return instance
 
-def print_row(row, username_index, password_index):
-    password = "".join([ "*" for c in row[password_index] ])
-    print("username: ", row[username_index], "\t", "password: ", password)
+
+def print_row(instance):
+    if "token" in instance:
+        print("token: ", instance["token"], end='')
+    else:
+        password = "".join([ "*" for c in instance["password"] ])
+        print("username: ", instance["username"], "\t", "password: ", password, end='')
+    print("\timage: {}\timage ver: {}\tsize: {}".format(instance["image"], instance["image_version"], instance["size"]))
 
 def list_contains(l, field, value):
     for entry in l:
         if entry[field] == value:
             return entry
     return False
+
+def launch_instance(row, row_index):
+    # platform
+    if args.jetstream:
+        api_client = APIClient(platform="jetstream")
+    else:
+        api_client = APIClient(platform="cyverse")
+
+    # token or username
+    if args.token:
+        api_client.token = row["token"]
+    else:
+        api_client.login(row["username"], row["password"])
+    try:
+        instance = Instance(api_client, row["image"], row["image_version"], row["size"], opt=row)
+        instance.launch()
+        print("Instance launched, username: {}, id: {}".format(instance.owner, instance.id))
+    except Exception as e:
+        print("row {} failed".format(row_index))
+        print(row)
+        print(e)
+        instance = None
+    return instance
 
 main()
 
