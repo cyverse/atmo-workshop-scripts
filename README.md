@@ -49,19 +49,32 @@ Launched instance off image for 1 or more account.
 
 #### Options:
 
-`--username` pass the username of account, password will be prompted, for a single account
-
 `--csv` pass in a csv file containing credential (username and password) of accounts
+
+`--token` uses access token instead of username & password, default to enable with `--jetstream`
 
 `--dont-wait` script will not wait for the instance launched to become fully active (status: active, activity: N/A), by default, script will wait for the instance to be fully active
 
+`--jetstream` target Jetstream cloud instead of Cyverse Atmosphere
+
+`--cyverse` target Cyverse Atmosphere (default)
+
 #### Descriptions:
+
+Script only takes input via a csv file, provided by `--csv` option.
+
+Failure during the launch of an instance does not terminate the script, the script will proceed onto launching other instances,
+or waiting for instance to be active.
+
+By default the script will wait for all instances launched to become fully active (status: active, activity: N/A),
+but will timeout 30min after launched and report as "failed to launch in time"
 
 Instance will be
 
 - launched under the project with the same name as the username (1st found),
 
 - launched using the allocation source with the same name as username (1st found),
+  or specified in csv file with "allocation source" field
 
 - launched using the identity with the same username (1st found),
 
@@ -71,4 +84,8 @@ Example csv
 ```csv
 username,password,image,image version,instance size
 cyverse_us_01,some_password,https://atmo.cyverse.org/application/images/1552,2.0,tiny1
+```
+```csv
+token,image,image version,instance size
+this_is_an_access_token,some_password,https://use.jetstream-cloud.org/application/images/717,1.27,m1.tiny
 ```
