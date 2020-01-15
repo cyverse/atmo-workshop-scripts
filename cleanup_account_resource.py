@@ -177,7 +177,7 @@ def row_to_account(row, username_index, password_index):
 
 def print_row(row, username_index, password_index):
     password = "".join([ "*" for c in row[password_index] ])
-    print("username: ", row[username_index], "\t", "password: ", password)
+    print("username: {} \t password: {}".format(row[username_index], password))
 
 def login(username, password):
     """
@@ -188,7 +188,7 @@ def login(username, password):
         resp.raise_for_status()
         token = resp.json()['access_token']
     except requests.exceptions.HTTPError:
-        print("Authentication failed, username: %s" % username)
+        print("Authentication failed, username: {}".format(username))
         exit(1)
     except json.decoder.JSONDecodeError:
         print("Fail to parse response body as JSON")
