@@ -13,15 +13,13 @@ Free up all the resources allocated by 1 or more accounts, like instances, volum
 
 #### Options:
 
-`--username` pass the username, password will be prompted for a single account
-
-`--csv` pass in a csv file containing credentials (username & password, or token) of accounts, without `--token`, it will look for username & password
-
-`--token` uses access token instead of username & password, default to enable with `--jetstream`, token will be prompted if used for a single account (without `--csv`)
-
-`--jetstream` target Jetstream cloud instead of Cyverse Atmosphere
-
-`--cyverse` target Cyverse Atmosphere (default)
+| | |
+|-|-|
+`--username`    | pass the username, password will be prompted for a single account
+`--csv`         | pass in a csv file containing credentials (username & password, or token) of accounts, without `--token`, it will look for username & password
+`--token`       | uses access token instead of username & password, default to enable with `--jetstream`, token will be prompted if used for a single account (without `--csv`)
+`--jetstream`   | target Jetstream cloud instead of Cyverse Atmosphere
+`--cyverse`     | target Cyverse Atmosphere (default)
 
 #### Descriptions:
 
@@ -49,15 +47,13 @@ Launched instance off image for multiple accounts.
 
 #### Options:
 
-`--csv` pass in a csv file containing credentials (username and password) of accounts
-
-`--token` uses access token instead of username & password, default to enable with `--jetstream`
-
-`--dont-wait` script will not wait for the instance launched to become fully active (status: active, activity: N/A), by default script will wait for the instance to be fully active
-
-`--jetstream` target Jetstream cloud instead of Cyverse Atmosphere
-
-`--cyverse` target Cyverse Atmosphere (default)
+| | |
+|-|-|
+`--csv`         | pass in a csv file containing credentials (username and password) of accounts
+`--token`       | uses access token instead of username & password, default to enable with `--jetstream`
+`--dont-wait`   | script will not wait for the instance launched to become fully active (status: active, activity: N/A), by default script will wait for the instance to be fully active
+`--jetstream`   | target Jetstream cloud instead of Cyverse Atmosphere
+`--cyverse`     | target Cyverse Atmosphere (default)
 
 #### Descriptions:
 
