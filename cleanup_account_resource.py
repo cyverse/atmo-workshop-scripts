@@ -65,14 +65,14 @@ def main():
                     delete_project(token, project)
 
         except:
-            print("Errors when free up resources for account in row {}".format(row_index))
+            print("Errors when freeing up resources for account in row {}".format(row_index))
             raise
             exit(1)
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Clean up all resources allocated by one or more accounts, use csv file for more than one account")
     parser.add_argument("--username", dest="username", type=str, help="username of the cyverse account, only specify 1 account")
-    parser.add_argument("--csv", dest="csv_filename", type=str, help="filename of the csv file that contains credential for all the accounts")
+    parser.add_argument("--csv", dest="csv_filename", type=str, help="filename of the csv file that contains credentials for all the accounts")
     parser.add_argument("--cyverse", dest="cyverse", action="store_true", help="Target platform: Cyverse Atmosphere (default)")
     parser.add_argument("--jetstream", dest="jetstream", action="store_true", help="Target platform: Jetstream")
     parser.add_argument("--token", dest="token", action="store_true", help="use access token instead of username & password, default for Jetstream")
@@ -177,7 +177,7 @@ def row_to_account(row, username_index, password_index):
 
 def print_row(row, username_index, password_index):
     password = "".join([ "*" for c in row[password_index] ])
-    print("username: ", row[username_index], "\t", "password: ", password)
+    print("username: {} \t password: {}".format(row[username_index], password))
 
 def login(username, password):
     """
@@ -188,7 +188,7 @@ def login(username, password):
         resp.raise_for_status()
         token = resp.json()['access_token']
     except requests.exceptions.HTTPError:
-        print("Auentication failed, username: ", username)
+        print("Authentication failed, username: {}".format(username))
         exit(1)
     except json.decoder.JSONDecodeError:
         print("Fail to parse response body as JSON")

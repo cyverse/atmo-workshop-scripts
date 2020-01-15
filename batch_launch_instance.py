@@ -52,7 +52,7 @@ class APIClient:
         elif platform == "cyverse":
             self.api_base_url = "atmo-36.cyverse.org"
         else:
-            raise RuntimeError("Unknow platform")
+            raise RuntimeError("Unknown platform")
         self.token = None
 
     def login(self, username, password):
