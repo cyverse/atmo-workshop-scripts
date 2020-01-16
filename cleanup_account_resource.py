@@ -33,6 +33,14 @@ def main():
             else:
                 token = login(account["username"], account["password"])
 
+            # delete all links
+            all_links = list_links_of_user(token)
+            for link in all_links:
+                print(link["title"])
+                print(link["link"])
+                print(link["id"])
+                delete_link(token, link["id"])
+
             # deattach all the volumes
             deattached = []
             all_volumes = list_volume_of_user(token)
@@ -203,10 +211,10 @@ def login(username, password):
         token = resp.json()['access_token']
     except requests.exceptions.HTTPError:
         print("Authentication failed, username: {}".format(username))
-        exit(1)
+        raise
     except json.decoder.JSONDecodeError:
         print("Fail to parse response body as JSON")
-        exit(1)
+        raise
     return token
 
 def list_instance_of_user(token):
@@ -483,6 +491,49 @@ def create_project(token, name, description, owner):
         raise
     except json.decoder.JSONDecodeError:
         print("Fail to parse response body as JSON")
+        raise
+
+def list_links_of_user(token):
+    try:
+        headers = {}
+        headers["Host"] = "atmo.cyverse.org"
+        headers["Accept"] = "application/json;q=0.9,*/*;q=0.8"
+        if token:
+            headers["Authorization"] = "TOKEN " + token
+
+        url = "https://" + api_base_url + "/api/v2/links"
+        resp = requests.get(url, headers=headers)
+        resp.raise_for_status()
+        json_obj = json.loads(resp.text)
+
+        return json_obj["results"]
+    except json.decoder.JSONDecodeError:
+        print("Fail to parse response body as JSON")
+        raise
+    except requests.HTTPError:
+        print("Fail to list all links of user")
+        raise
+
+def delete_link(token, link_uuid):
+    try:
+        headers = {}
+        headers["Host"] = "atmo.cyverse.org"
+        headers["Accept"] = "application/json;q=0.9,*/*;q=0.8"
+        if token:
+            headers["Authorization"] = "TOKEN " + token
+
+        url = "https://" + api_base_url + "/api/v2/links/" + link_uuid
+        resp = requests.delete(url, headers=headers)
+        resp.raise_for_status()
+        if resp.text:
+            json_obj = json.loads(resp.text)
+            return json_obj
+        return None
+    except json.decoder.JSONDecodeError:
+        print("Fail to parse response body as JSON")
+        raise
+    except requests.HTTPError:
+        print("Fail to delete link")
         raise
 
 def account_username(token):
