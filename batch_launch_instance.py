@@ -546,7 +546,7 @@ def parse_row(use_token, row, required_index, optional_index):
         instance["token"] = row[required_index["token"]]
     else:
         instance["username"] = row[required_index["username"]]
-        instance["password"] = row[required_index["username"]]
+        instance["password"] = row[required_index["password"]]
 
     instance["image"] = image_id_from_url(row[required_index["image"]])
     instance["image_version"] = row[required_index["image version"]]
