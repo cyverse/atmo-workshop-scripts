@@ -33,6 +33,20 @@ def main():
             else:
                 token = login(account["username"], account["password"])
 
+            # deattach all the volumes
+            deattached = []
+            all_volumes = list_volume_of_user(token)
+            for vol in all_volumes:
+                if deattach_volume(token, vol["uuid"]):
+                    deattached.append(vol["uuid"])
+
+            # wait for all volumes to deattach
+            while deattached:
+                for vol_uuid in list(deattached):
+                    # remove from list if finished deattaching
+                    if not vol_attached_to(token, vol_uuid):
+                        deattached.remove(vol_uuid)
+
             # delete all instances
             all_instances = list_instance_of_user(token)
             for instance in all_instances:
@@ -252,6 +266,91 @@ def list_volume_of_user(token):
         print("Fail to parse response body as JSON")
         raise
     return json_obj["results"]
+
+def get_volume(token, vol_uuid, provider_uuid, identity_uuid):
+    try:
+        headers = {}
+        headers["Host"] = api_base_url
+        headers["Accept"] = "application/json;q=0.9,*/*;q=0.8"
+        headers["Authorization"] = "TOKEN " + token
+
+        url = "https://" + api_base_url + "/api/v1"
+        url += "/provider/" + provider_uuid
+        url += "/identity/" + identity_uuid
+        url += "/volume/" + vol_uuid
+        resp = requests.get(url, headers=headers)
+        resp.raise_for_status()
+        json_obj = json.loads(resp.text)
+    except requests.exceptions.HTTPError:
+        print("Fail to list all the volumes")
+        raise
+    except json.decoder.JSONDecodeError:
+        print("Fail to parse response body as JSON")
+        raise
+    return json_obj
+
+def get_volume_v2(token, vol_uuid):
+    try:
+        headers = {}
+        headers["Host"] = api_base_url
+        headers["Accept"] = "application/json;q=0.9,*/*;q=0.8"
+        headers["Authorization"] = "TOKEN " + token
+
+        url = "https://" + api_base_url + "/api/v2"
+        url += "/volumes/" + vol_uuid
+        resp = requests.get(url, headers=headers)
+        resp.raise_for_status()
+        json_obj = json.loads(resp.text)
+    except requests.exceptions.HTTPError:
+        print("Fail to list all the volumes")
+        raise
+    except json.decoder.JSONDecodeError:
+        print("Fail to parse response body as JSON")
+        raise
+    return json_obj
+
+def vol_attached_to(token, vol_uuid):
+    vol = get_volume_v2(token, vol_uuid)
+    json_obj = get_volume(token, vol_uuid, vol["provider"]["uuid"], vol["identity"]["uuid"])
+    return json_obj["attach_data"]
+
+def deattach_volume(token, vol_uuid):
+    vol = get_volume_v2(token, vol_uuid)
+    vol_v2 = get_volume(token, vol_uuid, vol["provider"]["uuid"], vol["identity"]["uuid"])
+    if "attach_data" in vol_v2 and vol_v2["attach_data"]:
+        _deattach_volume(token, vol_uuid, vol["provider"]["uuid"], vol["identity"]["uuid"], vol_v2["attach_data"]["instance_alias"])
+        return True
+    else:
+        print("Volume {} not attached to any instance".format(vol_uuid))
+        return False
+
+def _deattach_volume(token, vol_uuid, provider_uuid, identity_uuid, instance_uuid):
+    try:
+        headers = {}
+        headers["Host"] = api_base_url
+        headers["Accept"] = "application/json;q=0.9,*/*;q=0.8"
+        headers["Authorization"] = "TOKEN " + token
+
+        url = "https://" + api_base_url + "/api/v1"
+        url += "/provider/" + provider_uuid
+        url += "/identity/" + identity_uuid
+        url += "/instance/" + instance_uuid
+        url += "/action"
+
+        data = {}
+        data["action"] = "detach_volume"
+        data["volume_id"] = vol_uuid
+
+        resp = requests.post(url, headers=headers, json=data)
+        resp.raise_for_status()
+        json_obj = json.loads(resp.text)
+    except requests.exceptions.HTTPError:
+        print("Fail to list all the volumes")
+        raise
+    except json.decoder.JSONDecodeError:
+        print("Fail to parse response body as JSON")
+        raise
+    return json_obj
 
 def reboot_instance(token, instance_json):
     try:
