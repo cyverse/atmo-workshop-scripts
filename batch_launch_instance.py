@@ -167,6 +167,7 @@ class APIClient:
         profile = self.user_profile()
         return profile["username"]
 
+    @retry_3
     def user_profile(self):
         try:
             json_obj = self._atmo_get_req("/api/v1/profile")
