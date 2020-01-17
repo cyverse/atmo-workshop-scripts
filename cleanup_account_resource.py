@@ -565,6 +565,7 @@ def user_profile(token):
 
 
 
-main()
+if __name__ == '__main__':
+    main()
 
 

@@ -597,6 +597,7 @@ def launch_instance(row, row_index):
         instance = None
     return instance
 
-main()
+if __name__ == '__main__':
+    main()
 
 
