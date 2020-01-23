@@ -92,6 +92,13 @@ def main():
             exit(1)
 
 def parse_args():
+    """
+    Parsing cmd args
+
+    Returns:
+        a list of dict which contains the variable read from the csv or cmd line,
+        could contains keys "username", "password", "token"
+    """
     parser = argparse.ArgumentParser(description="Clean up all resources allocated by one or more accounts, use csv file for more than one account")
     parser.add_argument("--username", dest="username", type=str, help="username of the cyverse account, only specify 1 account")
     parser.add_argument("--csv", dest="csv_filename", type=str, help="filename of the csv file that contains credentials for all the accounts")
@@ -144,6 +151,16 @@ def parse_args():
     return account_list
 
 def read_account_from_csv(filename, use_token):
+    """
+    Read out account credentials from a csv file
+
+    Args:
+        filename: filename of the csv file
+        use_token: a boolean flag that determines whether or not token is used instead of username&password
+
+    Returns:
+        a list of dict, each dict contains credential about 1 account, like "username", "password", "token"
+    """
     account_list = []
 
     with open(filename) as csvfile:
@@ -183,6 +200,13 @@ def read_account_from_csv(filename, use_token):
 def find_field(all_fields, field_name):
     """
     Find the index of a field in the field row
+
+    Args:
+        all_fields: a list contains all field name from the header line of csv file
+        field_name: the field name to look up
+
+    Returns:
+        the index of field_name in the list all_fields
     """
     for i, field in enumerate(all_fields):
         if field == field_name:
@@ -191,6 +215,16 @@ def find_field(all_fields, field_name):
     exit(1)
 
 def row_to_account(row, username_index, password_index):
+    """
+    Convert a row to a dict with username and password as key
+
+    Args:
+        row: list of fields in a csv row
+        username_index: index of username in the row
+        password_index: index of password in the row
+    Returns:
+        a dict that contains field "username", "password"
+    """
     account = {}
     account["username"] = row[username_index]
     account["password"] = row[password_index]
@@ -198,12 +232,27 @@ def row_to_account(row, username_index, password_index):
     return account
 
 def print_row(row, username_index, password_index):
+    """
+    Print a row
+
+    Args:
+        row: list of fields in a csv row
+        username_index: index of username in the row
+        password_index: index of password in the row
+    """
     password = "".join([ "*" for c in row[password_index] ])
     print("username: {} \t password: {}".format(row[username_index], password))
 
 def login(username, password):
     """
     Obtain a temp authorization token with username and password
+
+    Args:
+        username: username of account
+        password: password of account
+
+    Returns:
+        a temporary access token
     """
     try:
         resp = requests.get("https://de.cyverse.org/terrain/token", auth=(username, password))
@@ -218,6 +267,14 @@ def login(username, password):
     return token
 
 def list_instance_of_user(token):
+    """
+    List all instances that a user has
+
+    Args:
+        token: access token of the account
+    Returns:
+        a list that contains all the instance (dict), parsed from json
+    """
     try:
         headers = {}
         headers["Host"] = api_base_url
@@ -238,6 +295,14 @@ def list_instance_of_user(token):
     return json_obj["results"]
 
 def list_project_of_user(token):
+    """
+    List all projects that a user has
+
+    Args:
+        token: access token of account
+    Returns:
+        a list of all the projects (dict), parsed from json
+    """
     try:
         headers = {}
         headers["Host"] = api_base_url
@@ -257,6 +322,14 @@ def list_project_of_user(token):
     return json_obj["results"]
 
 def list_volume_of_user(token):
+    """
+    List all volumes that a user has, both attached and deattached
+
+    Args:
+        token: access token of account
+    Returns:
+        a list of all volumes (dict) that user has
+    """
     try:
         headers = {}
         headers["Host"] = api_base_url
@@ -276,6 +349,18 @@ def list_volume_of_user(token):
     return json_obj["results"]
 
 def get_volume(token, vol_uuid, provider_uuid, identity_uuid):
+    """
+    Get detail info of a volume, used V1 API.
+    Contains info about the instance the volume is attached to if any.
+
+    Args:
+        token: access token of the account that owns the volume
+        vol_uuid: uuid of the volume
+        provider_uuid: uuid of the provider that the volume is at
+        identity_uuid: uuid of the identity that the volume is created from
+    Returns:
+        parsed json result of the API
+    """
     try:
         headers = {}
         headers["Host"] = api_base_url
@@ -298,6 +383,16 @@ def get_volume(token, vol_uuid, provider_uuid, identity_uuid):
     return json_obj
 
 def get_volume_v2(token, vol_uuid):
+    """
+    Get detail info of a volume, used V2 API.
+    Does not include info about the attaching status, or the instance that volume is attached to if any
+
+    Args:
+        token: access token of the account that owns the volume
+        vol_uuid: uuid of the volume to look up
+    Returns:
+        parsed json result of the API
+    """
     try:
         headers = {}
         headers["Host"] = api_base_url
@@ -318,11 +413,30 @@ def get_volume_v2(token, vol_uuid):
     return json_obj
 
 def vol_attached_to(token, vol_uuid):
+    """
+    Check to see if a volume is attached or not, and which instance is it attached to
+
+    Args:
+        token: access token of the account that owns the volume
+        vol_uuid: uuid of the volume to look up for
+    Returns:
+        None if the the volume is deattached, otherwise, a dict contains info of the instance the volume attached to
+    """
     vol = get_volume_v2(token, vol_uuid)
     json_obj = get_volume(token, vol_uuid, vol["provider"]["uuid"], vol["identity"]["uuid"])
     return json_obj["attach_data"]
 
 def deattach_volume(token, vol_uuid):
+    """
+    Deattach the volume, if the volume is attached.
+    If the volume is already deattached, do nothing
+
+    Args:
+        token: access token of the account that owns the volume
+        vol_uuid: uuid of the volume to perform the deattach on
+    Returns:
+        boolean flag of whether or not the deattach is performed
+    """
     vol = get_volume_v2(token, vol_uuid)
     vol_v2 = get_volume(token, vol_uuid, vol["provider"]["uuid"], vol["identity"]["uuid"])
     if "attach_data" in vol_v2 and vol_v2["attach_data"]:
@@ -333,6 +447,19 @@ def deattach_volume(token, vol_uuid):
         return False
 
 def _deattach_volume(token, vol_uuid, provider_uuid, identity_uuid, instance_uuid):
+    """
+    Perform the deattch of a volume.
+    It is an action performed on the instance rahter than the volume.
+
+    Args:
+        token: access token of the account that owns the volume
+        vol_uuid:
+        provider_uuid: uuid of the provider that the instance is created with
+        identity_uuid: uuid of the identity that the instance is created with
+        instance_uuid: uuid of the instance that the volume is attached to
+    Returns:
+        parsed json result of the response
+    """
     try:
         headers = {}
         headers["Host"] = api_base_url
@@ -361,6 +488,13 @@ def _deattach_volume(token, vol_uuid, provider_uuid, identity_uuid, instance_uui
     return json_obj
 
 def reboot_instance(token, instance_json):
+    """
+    Reboot instance
+
+    Args:
+        token: access token of the account that owns the instance
+        instance_json: json obj of an instance, comes from list_instances_of_user(), needs "provider", "identity", "uuid" fields
+    """
     try:
         headers = {}
         headers["Host"] = api_base_url
@@ -391,6 +525,13 @@ def reboot_instance(token, instance_json):
         raise
 
 def delete_instance(token, instance_json):
+    """
+    Delete an instance
+
+    Args:
+        token: access token of an instance
+        instance_json: json obj of an instance, comes from list_instances_of_user(), needs "provider", "identity", "uuid" fields
+    """
     try:
         headers = {}
         headers["Host"] = api_base_url
@@ -416,6 +557,13 @@ def delete_instance(token, instance_json):
         raise
 
 def delete_project(token, project_json):
+    """
+    Delete a project
+
+    Args:
+        token: access token of an account that owns the project
+        project_json: json obj of an project, needs "id" field
+    """
     try:
         headers = {}
         headers["Host"] = api_base_url
@@ -441,6 +589,13 @@ def delete_project(token, project_json):
         raise
 
 def delete_volume(token, volume_json):
+    """
+    Delete a volume
+
+    Args:
+        token: access token of the account that owns the volume
+        volume_json: json obj of the volume, needs "provider", "identity", "uuid" fields
+    """
     try:
         headers = {}
         headers["Host"] = api_base_url
@@ -467,6 +622,17 @@ def delete_volume(token, volume_json):
         raise
 
 def create_project(token, name, description, owner):
+    """
+    Create a project with given name
+
+    Args:
+        token: access token of the account that owns the project
+        name: name of the project to be created
+        description: description of the project to be created
+        owner: owner of the project
+    Returns:
+        return the json obj of the response
+    """
     try:
         headers = {}
         headers["Host"] = api_base_url
@@ -494,6 +660,14 @@ def create_project(token, name, description, owner):
         raise
 
 def list_links_of_user(token):
+    """
+    List all the links of an account
+
+    Args:
+        token: access token of the account
+    Returns:
+        a json obj from the response
+    """
     try:
         headers = {}
         headers["Host"] = "atmo.cyverse.org"
@@ -515,6 +689,14 @@ def list_links_of_user(token):
         raise
 
 def delete_link(token, link_uuid):
+    """
+    Delete an external link
+
+    Args:
+        token: access token of the account that owns the link
+    Returns:
+        None
+    """
     try:
         headers = {}
         headers["Host"] = "atmo.cyverse.org"
@@ -537,10 +719,26 @@ def delete_link(token, link_uuid):
         raise
 
 def account_username(token):
+    """
+    Get username of an account using token
+
+    Args:
+        token: access token of the account
+    Returns:
+        the username
+    """
     profile = user_profile(token)
     return profile["username"]
 
 def user_profile(token):
+    """
+    Get the user's profile
+
+    Args:
+        token: access token of the account
+    Returns:
+        json obj of the response
+    """
     try:
         headers = {}
         headers["Host"] = api_base_url
