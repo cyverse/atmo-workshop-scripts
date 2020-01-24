@@ -308,7 +308,7 @@ class APIClient:
             a tuple of (status, activity)
         """
         try:
-            url = "/api/v2/instances/" + str(instance_id)
+            url = "/api/instances/" + str(instance_id)
             json_obj = self._atmo_get_req(url)
 
             self.last_status = json_obj["status"]
