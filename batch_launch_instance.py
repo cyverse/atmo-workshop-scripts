@@ -28,7 +28,7 @@ cyverse_us_01,Discovery#Science01#,https://atmo.cyverse.org/application/images/1
 
 def retry_3(func):
     """
-    retry function 3 times
+    a decorator that retry function 3 times
     """
     def inner(*args, **kwargs): 
         error = None
@@ -46,6 +46,9 @@ def retry_3(func):
 
 
 class APIClient:
+    """
+    API client that send request to the Atmosphere REST API endpoints to perform varies actions
+    """
     def __init__(self, platform="cyverse"):
         if platform == "jetstream":
             self.api_base_url = "use.jetstream-cloud.org"
@@ -57,7 +60,14 @@ class APIClient:
 
     def login(self, username, password):
         """
-        Obtain a temp authorization token with username and password
+        Obtain a temp authorization token with username and password.
+        Only usable on Cyverse Atmosphere.
+
+        Args:
+            username: username of the account
+            password: password of the account
+        Returns:
+            a temporary access token
         """
         try:
             resp = requests.get("https://de.cyverse.org/terrain/token", auth=(username, password))
@@ -71,6 +81,12 @@ class APIClient:
             raise
 
     def list_instance_of_user(self):
+        """
+        List all instance of an account
+
+        Returns:
+            a json obj from the parsing the response
+        """
         try:
             json_obj = self._atmo_get_req("/api/v2/instances")
         except requests.exceptions.HTTPError:
@@ -79,6 +95,14 @@ class APIClient:
         return json_obj["results"]
 
     def get_project(self, name):
+        """
+        Search for a project by project name, return the 1st found, ignore duplicates
+
+        Args:
+            name: name of the project to search for
+        Returns:
+            the project (dict) with the given name
+        """
         project_list = self.list_project_of_user()
         # ignore dulpcaite entry with the same name, return the 1st
         project = list_contains(project_list, "name", name)
@@ -87,6 +111,9 @@ class APIClient:
         return project
 
     def list_project_of_user(self):
+        """
+        List all the projects of an account
+        """
         try:
             json_obj = self._atmo_get_req("/api/v2/projects")
         except requests.exceptions.HTTPError:
@@ -95,6 +122,9 @@ class APIClient:
         return json_obj["results"]
 
     def instance_size_list(self):
+        """
+        Return a list of instance size supported by the target platform
+        """
         try:
             json_obj = self._atmo_get_req("/api/v2/sizes")
         except requests.exceptions.HTTPError:
@@ -103,6 +133,14 @@ class APIClient:
         return json_obj["results"]
 
     def get_allocation_source(self, name):
+        """
+        Search for the allocation sources in the account by the name, return the 1st found, ignore duplicates
+
+        Args:
+            name: name of the allocation source to search for
+        Returns:
+            the allocation source with the given name
+        """
         source_list = self.allocation_source_list()
         # ignore dulpcaite entry with the same name, return the 1st
         alloc_src = list_contains(source_list, "name", name)
@@ -111,6 +149,9 @@ class APIClient:
         return alloc_src
 
     def allocation_source_list(self):
+        """
+        Returns a list of allocation source of the account
+        """
         try:
             json_obj = self._atmo_get_req("/api/v2/allocation_sources")
         except requests.exceptions.HTTPError:
@@ -118,6 +159,14 @@ class APIClient:
         return json_obj["results"]
 
     def get_identity(self, username):
+        """
+        Search for identity of account with the given username
+
+        Args:
+            username: username to search for
+        Returns:
+            return a json_obj of the identity
+        """
         id_list = self.identity_list()
         for id in id_list:
         # ignore dulpcaite entry with the same name, return the 1st
@@ -126,6 +175,9 @@ class APIClient:
         raise RuntimeError("No identity with the username of " + username)
 
     def identity_list(self):
+        """
+        Returns a list of identity
+        """
         try:
             json_obj = self._atmo_get_req("/api/v2/identities")
         except requests.exceptions.HTTPError:
@@ -134,6 +186,14 @@ class APIClient:
         return json_obj["results"]
 
     def get_image(self, id):
+        """
+        Search for the image with the given id
+
+        Args:
+            id: id of the image
+        Returns:
+            return the image with the given id
+        """
         img_list = self.image_list()
         img = list_contains(img_list, "id", id)
         if not img:
@@ -141,6 +201,9 @@ class APIClient:
         return img
 
     def image_list(self):
+        """
+        Returns a list of image
+        """
         try:
             json_obj = self._atmo_get_req("/api/v2/images")
         except requests.exceptions.HTTPError:
@@ -149,6 +212,16 @@ class APIClient:
         return json_obj["results"]
 
     def list_machines_of_image_version(self, image_id, image_version):
+        """
+        Get a list of machines of the image with the specific version,
+        the uuid of the machine is the source_uuid that launch() is refer to.
+
+        Args:
+            image_id: id of the image
+            image_version: version of the image, e.g. "2.1"
+        Returns:
+            "machines" field of json response of the image version
+        """
         image = self.get_image(image_id)
         version = list_contains(image["versions"], "name", image_version)
         if not version:
@@ -164,11 +237,17 @@ class APIClient:
         return machines
 
     def account_username(self):
+        """
+        Get username of account
+        """
         profile = self.user_profile()
         return profile["username"]
 
     @retry_3
     def user_profile(self):
+        """
+        Get the user profile
+        """
         try:
             json_obj = self._atmo_get_req("/api/v1/profile")
 
@@ -181,6 +260,19 @@ class APIClient:
             raise
     
     def launch_instance_off_image(self, name, source_uuid, size_alias, alloc_src_uuid, project_uuid, identity_uuid):
+        """
+        Launch a instance from an image
+
+        Args:
+            name: name of the instance
+            source_uuid: uuid of the source machine of the image
+            size_alias: uuid of the size
+            alloc_src_uuid: uuid of the allocation source
+            project_uuid: uuid of the project to create the instance under
+            identity_uuid: uuid of the identity to create the instance with
+        Returns:
+            parsed json response about the launched instance
+        """
         try:
             headers = {}
             headers["Content-Type"] = "application/json"
@@ -207,6 +299,14 @@ class APIClient:
             raise
 
     def instance_status(self, instance_id):
+        """
+        Get the status and activiy of the instance
+
+        Args:
+            instance_id: id of the instance
+        Returns:
+            a tuple of (status, activity)
+        """
         try:
             url = "/api/v2/instances/" + str(instance_id)
             json_obj = self._atmo_get_req(url)
@@ -218,6 +318,17 @@ class APIClient:
             raise
 
     def instance_action(self, proivder_uuid, identity_uuid, instance_uuid, action, reboot_type=""):
+        """
+        Perform an action on an instance.
+        Available actions: reboot, suspend
+
+        Args:
+            provider_uuid: uuid of the provider the instance is on
+            identity_uuid: uuid of the identity the instance is created with
+            instance_uuid: uuid of the instance to perform the action on
+            action: the action to be performed
+            reboot_type: if the action is reboot, specify the type of the reboot, HARD or SOFT
+        """
         try:
             url = "/api/v1"
             url += "/provider/" + proivder_uuid
@@ -242,6 +353,14 @@ class APIClient:
             raise
 
     def delete_instance(self, proivder_uuid, identity_uuid, instance_uuid):
+        """
+        Delete an instance
+
+        Args:
+            provider_uuid: uuid of the provider the instance is on
+            identity_uuid: uuid of the identity the instance is creaed with
+            instance_uuid: uuid of the instance to be deleted
+        """
         try:
             url = "/api/v1"
             url += "/provider/" + proivder_uuid
@@ -255,6 +374,16 @@ class APIClient:
             raise
 
     def _atmo_get_req(self, url, additional_header={}, full_url=""):
+        """
+        Send a GET request to the target service, will prepend a base url in front of the url depends on platform
+
+        Args:
+            url: url to send the request to
+            additional_header: other header to be included
+            full_url: to override the use of api_base_url
+        Returns:
+            return the response parsed by json module
+        """
         try:
             headers = additional_header
             headers["Host"] = self.api_base_url
@@ -275,6 +404,16 @@ class APIClient:
         return json_obj
 
     def _atmo_post_req(self, url, data={}, json_data={}, additional_header={}):
+        """
+        Send a POST request to the target service, will prepend a base url in front of the url depends on platform
+
+        Args:
+            url: url to send the request to
+            additional_header: other header to be included
+            full_url: to override the use of api_base_url
+        Returns:
+            return the response parsed by json module
+        """
         try:
             headers = additional_header
             headers["Host"] = self.api_base_url
@@ -299,6 +438,16 @@ class APIClient:
         return json_obj
 
     def _atmo_delete_req(self, url, additional_header={}):
+        """
+        Send a DELETE request to the target service, will prepend a base url in front of the url depends on platform
+
+        Args:
+            url: url to send the request to
+            additional_header: other header to be included
+            full_url: to override the use of api_base_url
+        Returns:
+            return the response parsed by json module
+        """
         try:
             headers = additional_header
             headers["Host"] = self.api_base_url
@@ -344,11 +493,20 @@ class Instance:
 
     @retry_3
     def status(self):
+        """
+        Get the status of the instance.
+
+        Returns:
+            a tuple of (status, activity)
+        """
         status, activity = self.api_client.instance_status(self.id)
         self.last_status = status
         return (status, activity)
         
     def launch(self):
+        """
+        Launch the instance with all the given parameters
+        """
         size_list = self.api_client.instance_size_list()
         size_entry = list_contains(size_list, "name", self.size)
         if not size_entry:
@@ -369,6 +527,10 @@ class Instance:
         self.id = self.instance_json["id"]
 
     def wait_active(self):
+        """
+        Wait for the instance to become fully active (status == "active" && activity == "").
+        Check for the instance status every some second
+        """
         status = ""
         acivity = ""
         while not (status == "active" and acivity == ""):
@@ -397,6 +559,9 @@ class Instance:
         return True
 
     def delete(self):
+        """
+        Delete the instance
+        """
         try:
             json_obj = self.api_client.delete_instance(self.instance_json["provider"]["uuid"],
                 self.instance_json["identity"]["uuid"],
@@ -406,6 +571,9 @@ class Instance:
             raise
 
     def reboot(self):
+        """
+        Reboot the instance
+        """
         try:
             json_obj = self.api_client.instance_action(
                 self.instance_json["provider"]["uuid"],
@@ -452,6 +620,15 @@ def main():
                     print("Instance failed to become fully active in time, {}, last_status: {}".format(str(instance), instance.last_status))
 
 def parse_args():
+    """
+    Parsing the cmd arguments
+
+    Returns:
+        a list of instance to be launched
+        "username", "password" or "token"
+        ["image", "image version", "instance size"]
+        ["instance name", "project name", "allocation source"
+"""
     parser = argparse.ArgumentParser(description="Clean up all resources allocated by one or more accounts, use csv file for more than one account")
     parser.add_argument("--csv", dest="csv_filename", type=str, required=True, help="filename of the csv file that contains credential for all the accounts")
     parser.add_argument("--dont-wait", dest="dont_wait", action="store_true", default=False, help="do not wait for instance to be fully launched (active)")
@@ -477,6 +654,15 @@ def parse_args():
     return account_list
 
 def read_info_from_csv(filename, use_token):
+    """
+    Read instance info from a csv file
+
+    Args:
+        filename: file name of the csv file
+        use_token: use token or username&password, only valid for Cyverse Atmosphere
+    Returns:
+        a list of instance
+    """
     instance_list = []
 
     with open(filename) as csvfile:
@@ -513,6 +699,13 @@ def read_info_from_csv(filename, use_token):
 def find_fields(all_fields, required_fields, optional_fields):
     """
     Find the index of a field in the field row
+
+    Args:
+        all_fields: all of the fields in a row
+        required_fields: fields that are required in csv
+        optional_fields: fields that are optional in csv
+    Returns:
+        a tuple of 2 list of index, (required_fields_index, optional_fields_index)
     """
     required_fields_index = {}
     optional_fields_index = {}
@@ -528,6 +721,14 @@ def find_fields(all_fields, required_fields, optional_fields):
     return required_fields_index, optional_fields_index
 
 def image_id_from_url(url):
+    """
+    Get the image id from the url
+
+    Args:
+        url: url of the image
+    Returns:
+        image id as an integer
+    """
     try:
         # get the image id from the url
         image_id_str = url.split("/")[-1]
@@ -542,6 +743,15 @@ def image_id_from_url(url):
         raise
 
 def parse_row(use_token, row, required_index, optional_index):
+    """
+    Args:
+        use_token: whether or not to use token rather than username and password
+        row: a list that contains all the fields in a row in csv
+        required_index: a list of index in the row list that represent fields that are required
+        optional_index: a list of index in the row list that represent fields that are optional
+    Returns:
+        return a dict contains info obtained from the row, with the required and optional fields
+    """
     instance = {}
     if use_token:
         instance["token"] = row[required_index["token"]]
@@ -562,6 +772,10 @@ def parse_row(use_token, row, required_index, optional_index):
 
 
 def print_row(instance):
+    """
+    Args:
+        instance: a dict that represents an instance
+    """
     if "token" in instance:
         print("token: ", instance["token"], end='')
     else:
@@ -570,12 +784,27 @@ def print_row(instance):
     print("\timage: {}\timage ver: {}\tsize: {}".format(instance["image"], instance["image_version"], instance["size"]))
 
 def list_contains(l, field, value):
+    """
+    Args:
+        l: a list in which each element is a dict
+        field: field in an element (a dict) to look up on
+        value: value corrsponding to the field to find a match with
+    Returns:
+        False if no match is found
+    """
     for entry in l:
         if entry[field] == value:
             return entry
     return False
 
 def launch_instance(row, row_index):
+    """
+    Launch an instance
+
+    Args:
+        row: a dict contains info about an instance to be launched
+        row_index: index (row number) in the list of instance, used to report errors
+    """
     # platform
     if args.jetstream:
         api_client = APIClient(platform="jetstream")
