@@ -238,10 +238,16 @@ class APIClient:
 
     def account_username(self):
         """
-        Get username of account
+        Get username of account from identity
         """
-        profile = self.user_profile()
-        return profile["username"]
+        id_list = self.identity_list()
+        if len(id_list) == 0:
+            raise RuntimeError("Account has no identity")
+        try:
+            username = id_list[0]["user"]["username"]
+            return username
+        except IndexError as e:
+            raise RuntimeError(e.args)
 
     @retry_3
     def user_profile(self):
