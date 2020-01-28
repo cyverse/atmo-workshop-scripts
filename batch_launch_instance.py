@@ -9,6 +9,8 @@ import getpass
 import time
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import as_completed
+from requests.exceptions import HTTPError
+from json.decoder import JSONDecodeError
 
 """
 Launch instances in batch for multiple accounts
@@ -55,7 +57,7 @@ class APIClient:
         elif platform == "cyverse":
             self.api_base_url = "atmo-36.cyverse.org"
         else:
-            raise RuntimeError("Unknown platform")
+            raise ValueError("Unknown platform")
         self.token = None
 
     def login(self, username, password):
@@ -73,12 +75,12 @@ class APIClient:
             resp = requests.get("https://de.cyverse.org/terrain/token", auth=(username, password))
             resp.raise_for_status()
             self.token = resp.json()['access_token']
-        except requests.exceptions.HTTPError:
-            print("Auentication failed, username: ", username)
-            raise
+        except HTTPError:
+            raise HTTPError("{}, Auentication failed, username: {}".format(resp.status_code, username))
         except json.decoder.JSONDecodeError:
-            print("Fail to parse response body as JSON")
-            raise
+            raise IncompleteResponse("Fail to parse response body as JSON")
+        except KeyError:
+            raise IncompleteResponse("Token missing from login")
 
     def list_instance_of_user(self):
         """
@@ -89,10 +91,12 @@ class APIClient:
         """
         try:
             json_obj = self._atmo_get_req("/api/v2/instances")
-        except requests.exceptions.HTTPError:
-            print("Fail to list all the instances")
-            raise
-        return json_obj["results"]
+            return json_obj["results"]
+        except HTTPError as e:
+            raise HTTPError(str(e.args) + "Fail to list all the instances")
+        except KeyError:
+            raise IncompleteResponse("Missing field")
+
 
     def get_project(self, name):
         """
@@ -107,7 +111,7 @@ class APIClient:
         # ignore dulpcaite entry with the same name, return the 1st
         project = list_contains(project_list, "name", name)
         if not project:
-            raise RuntimeError("No project with the name of " + name)
+            raise ValueError("No project with the name of " + name)
         return project
 
     def list_project_of_user(self):
@@ -116,9 +120,8 @@ class APIClient:
         """
         try:
             json_obj = self._atmo_get_req("/api/v2/projects")
-        except requests.exceptions.HTTPError:
-            print("Fail to list all the projects")
-            raise
+        except HTTPError as e:
+            raise HTTPError(str(e) + " Fail to list all the projects") from e
         return json_obj["results"]
 
     def instance_size_list(self):
@@ -127,9 +130,8 @@ class APIClient:
         """
         try:
             json_obj = self._atmo_get_req("/api/v2/sizes")
-        except requests.exceptions.HTTPError:
-            print("Fail to list all the instance size")
-            raise
+        except HTTPError as e:
+            raise HTTPError(str(e) + " Fail to list all the instance size") from e
         return json_obj["results"]
 
     def get_allocation_source(self, name):
@@ -145,7 +147,7 @@ class APIClient:
         # ignore dulpcaite entry with the same name, return the 1st
         alloc_src = list_contains(source_list, "name", name)
         if not alloc_src:
-            raise RuntimeError("No allocation source with the name of " + name)
+            raise ValueError("No allocation source with the name of " + name)
         return alloc_src
 
     def allocation_source_list(self):
@@ -154,8 +156,8 @@ class APIClient:
         """
         try:
             json_obj = self._atmo_get_req("/api/v2/allocation_sources")
-        except requests.exceptions.HTTPError:
-            print("Fail to list all allocation sources")
+        except HTTPError as e:
+            raise HTTPError(str(e) + " Fail to list all allocation sources") from e
         return json_obj["results"]
 
     def get_identity(self, username):
@@ -172,7 +174,7 @@ class APIClient:
         # ignore dulpcaite entry with the same name, return the 1st
             if id["user"]["username"] == username:
                 return id
-        raise RuntimeError("No identity with the username of " + username)
+        raise ValueError("No identity with the username of " + username)
 
     def identity_list(self):
         """
@@ -180,9 +182,8 @@ class APIClient:
         """
         try:
             json_obj = self._atmo_get_req("/api/v2/identities")
-        except requests.exceptions.HTTPError:
-            print("Fail to list all identity")
-            raise
+        except HTTPError as e:
+            raise HTTPError(str(e) + " Fail to list all identity") from e
         return json_obj["results"]
 
     def get_image(self, id):
@@ -197,7 +198,7 @@ class APIClient:
         img_list = self.image_list()
         img = list_contains(img_list, "id", id)
         if not img:
-            raise RuntimeError("No image with the id of " + str(id))
+            raise ValueError("No image with the id of " + str(id))
         return img
 
     def image_list(self):
@@ -206,9 +207,8 @@ class APIClient:
         """
         try:
             json_obj = self._atmo_get_req("/api/v2/images")
-        except requests.exceptions.HTTPError:
-            print("Fail to list all images")
-            raise
+        except HTTPError as e:
+            raise HTTPError(str(e) + " Fail to list all images") from e
         return json_obj["results"]
 
     def list_machines_of_image_version(self, image_id, image_version):
@@ -225,14 +225,13 @@ class APIClient:
         image = self.get_image(image_id)
         version = list_contains(image["versions"], "name", image_version)
         if not version:
-            raise RuntimeError("No version with the name of " + image_version)
+            raise IncompleteResponse("No version with the name of " + image_version)
         version_url = version["url"]
 
         try:
             json_obj = self._atmo_get_req("", full_url=version_url)
-        except requests.exceptions.HTTPError:
-            print("Fail to list all images")
-            raise
+        except HTTPError as e:
+            raise HTTPError(str(e) + " Fail to list all images") from e
         machines = json_obj["machines"]
         return machines
 
@@ -242,12 +241,12 @@ class APIClient:
         """
         id_list = self.identity_list()
         if len(id_list) == 0:
-            raise RuntimeError("Account has no identity")
+            raise IncompleteResponse("Account has no identity")
         try:
             username = id_list[0]["user"]["username"]
             return username
         except IndexError as e:
-            raise RuntimeError(e.args)
+            raise IncompleteResponse("Response incomplete") from e
 
     @retry_3
     def user_profile(self):
@@ -258,12 +257,10 @@ class APIClient:
             json_obj = self._atmo_get_req("/api/v1/profile")
 
             return json_obj
-        except requests.exceptions.HTTPError:
-            print("Fail to list profile")
-            raise
-        except json.decoder.JSONDecodeError:
-            print("Fail to parse response body as JSON")
-            raise
+        except HTTPError as e:
+            raise HTTPError("Fail to list profile") from e
+        except JSONDecodeError as e:
+            raise IncompleteResponse("Fail to parse response body as JSON") from e
     
     def launch_instance_off_image(self, name, source_uuid, size_alias, alloc_src_uuid, project_uuid, identity_uuid):
         """
@@ -300,9 +297,8 @@ class APIClient:
             print(json_formatted_str)
 
             return json_obj
-        except requests.exceptions.HTTPError:
-            print("Fail to launch instance with the specified image")
-            raise
+        except HTTPError:
+            raise HTTPError("Fail to launch instance with the specified image")
 
     def instance_status(self, instance_id):
         """
@@ -319,9 +315,8 @@ class APIClient:
 
             self.last_status = json_obj["status"]
             return (json_obj["status"], json_obj["activity"])
-        except requests.exceptions.HTTPError:
-            print("Failed to retrieve instance status")
-            raise
+        except HTTPError:
+            raise HTTPError("Failed to retrieve instance status")
 
     def instance_action(self, proivder_uuid, identity_uuid, instance_uuid, action, reboot_type=""):
         """
@@ -351,12 +346,10 @@ class APIClient:
             resp.raise_for_status()
 
             json_obj = json.loads(resp.text)
-        except requests.exceptions.HTTPError:
-            print("Fail to {} instance".format(action))
-            raise
-        except json.decoder.JSONDecodeError:
-            print("Fail to parse response body as JSON")
-            raise
+        except HTTPError:
+            raise HTTPError("Fail to {} instance".format(action))
+        except JSONDecodeError:
+            raise IncompleteResponse("Fail to parse response body as JSON")
 
     def delete_instance(self, proivder_uuid, identity_uuid, instance_uuid):
         """
@@ -375,9 +368,8 @@ class APIClient:
 
             json_obj = self._atmo_delete_req(url)
 
-        except requests.exceptions.HTTPError:
-            print("Fail to delete instance")
-            raise
+        except HTTPError:
+            raise HTTPError("Fail to delete instance")
 
     def _atmo_get_req(self, url, additional_header={}, full_url=""):
         """
@@ -404,9 +396,8 @@ class APIClient:
             resp = requests.get(url, headers=headers)
             resp.raise_for_status()
             json_obj = json.loads(resp.text)
-        except json.decoder.JSONDecodeError:
-            print("Fail to parse response body as JSON")
-            raise
+        except JSONDecodeError:
+            raise IncompleteResponse("Fail to parse response body as JSON")
         return json_obj
 
     def _atmo_post_req(self, url, data={}, json_data={}, additional_header={}):
@@ -435,12 +426,8 @@ class APIClient:
                 resp = requests.post(url, headers=headers, data=data)
             resp.raise_for_status()
             json_obj = json.loads(resp.text)
-        except requests.exceptions.HTTPError:
-            print(resp.text)
-            raise
-        except json.decoder.JSONDecodeError:
-            print("Fail to parse response body as JSON")
-            raise
+        except JSONDecodeError:
+            raise IncompleteResponse("Fail to parse response body as JSON")
         return json_obj
 
     def _atmo_delete_req(self, url, additional_header={}):
@@ -466,12 +453,8 @@ class APIClient:
             resp = requests.delete(url, headers=headers)
             resp.raise_for_status()
             json_obj = json.loads(resp.text)
-        except requests.exceptions.HTTPError:
-            print(resp.text)
-            raise
-        except json.decoder.JSONDecodeError:
-            print("Fail to parse response body as JSON")
-            raise
+        except JSONDecodeError:
+            raise IncompleteResponse("Fail to parse response body as JSON")
         return json_obj
 
 
@@ -516,7 +499,7 @@ class Instance:
         size_list = self.api_client.instance_size_list()
         size_entry = list_contains(size_list, "name", self.size)
         if not size_entry:
-            raise RuntimeError("Invalid size")
+            raise ValueError("Invalid size")
 
         if self.alloc_src:
             alloc_src = self.api_client.get_allocation_source(self.alloc_src)
@@ -572,9 +555,8 @@ class Instance:
             json_obj = self.api_client.delete_instance(self.instance_json["provider"]["uuid"],
                 self.instance_json["identity"]["uuid"],
                 self.instance_json["uuid"])
-        except requests.exceptions.HTTPError:
-            print("Fail to delete instance")
-            raise
+        except HTTPError as e:
+            raise HTTPError(str(e) + "Fail to delete instance")
 
     def reboot(self):
         """
@@ -588,9 +570,8 @@ class Instance:
                 "reboot",
                 reboot_type="HARD"
             )
-        except requests.exceptions.HTTPError:
-            print("Fail to reboot instance")
-            raise
+        except HTTPError as e:
+            raise HTTPError(str(e) + "Fail to reboot instance")
        
     def __str__(self):
         if self.id:
@@ -624,6 +605,11 @@ def main():
                 if not launch.result():
                     instance = launch.result()
                     print("Instance failed to become fully active in time, {}, last_status: {}".format(str(instance), instance.last_status))
+
+class IncompleteResponse(ValueError):
+    pass
+class CSVError(ValueError):
+    pass
 
 def parse_args():
     """
@@ -694,9 +680,9 @@ def read_info_from_csv(filename, use_token):
                     instance = parse_row(use_token, row, required_index, optional_index)
                     print_row(instance)
                 except Exception as e:
-                    raise RuntimeError("row {} missing reuquired field".format(row_index))
+                    raise CSVError(str(e) + "\nrow {} missing reuquired field".format(row_index)) from e
                 instance_list.append(instance)
-        except RuntimeError as e:
+        except CSVError as e:
             print(e)
             exit(1)
 
@@ -723,7 +709,7 @@ def find_fields(all_fields, required_fields, optional_fields):
     if len(required_fields_index) != len(required_fields):
         for field in required_fields:
             if field not in required_fields_index:
-                raise RuntimeError("No field called " + field)
+                raise ValueError("No field called " + field)
     return required_fields_index, optional_fields_index
 
 def image_id_from_url(url):
@@ -741,12 +727,10 @@ def image_id_from_url(url):
         return int(image_id_str)
     except IndexError:
         # unable to find the image id from url
-        print("Bad image url")
-        raise
+        raise IndexError("Bad image url")
     except ValueError:
         # unable to convert image id to integer
-        print("image id not integer")
-        raise
+        raise ValueError("image id not integer")
 
 def parse_row(use_token, row, required_index, optional_index):
     """
