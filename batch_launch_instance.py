@@ -608,17 +608,24 @@ def main():
 
     launched_instances = []
 
+    # Check credential
+    api_clients = []
+    for row, row_index in enumerate(instance_list):
+        api_client = account_login(row, row_index)
+        # Quit if any row has incorrect credential
+        if not api_client:
+            return
+        api_clients.append(api_client)
+
     # launch instance for each row (in csv or from arg)
     with ThreadPoolExecutor(max_workers=4) as executor:
-        futures = [ executor.submit(launch_instance, row, row_index) for row_index, row in enumerate(instance_list) ]
+        futures = [ executor.submit(launch_instance, api_clients[row_index], row, row_index) for row_index, row in enumerate(instance_list) ]
         for launched in as_completed(futures):
             instance_json = launched.result()
             if instance_json:
                 launched_instances.append(instance_json)
 
-    print("==============================")
-    print("{} instance launched".format(len(launched_instances)))
-    print("\n\n")
+    launched_summary(launched_instances)
 
     if not args.dont_wait:
         # wait for instance to be active
@@ -810,7 +817,7 @@ def list_contains(l, field, value):
             return entry
     return False
 
-def launch_instance(row, row_index):
+def account_login(row, row_index):
     """
     Launch an instance
 
@@ -818,27 +825,52 @@ def launch_instance(row, row_index):
         row: a dict contains info about an instance to be launched
         row_index: index (row number) in the list of instance, used to report errors
     """
-    # platform
-    if args.jetstream:
-        api_client = APIClient(platform="jetstream")
-    else:
-        api_client = APIClient(platform="cyverse")
-
-    # token or username
-    if args.token:
-        api_client.token = row["token"]
-    else:
-        api_client.login(row["username"], row["password"])
     try:
-        instance = Instance(api_client, row["image"], row["image_version"], row["size"], opt=row)
+        # platform
+        if args.jetstream:
+            api_client = APIClient(platform="jetstream")
+        else:
+            api_client = APIClient(platform="cyverse")
+
+        # token or username
+        if args.token:
+            api_client.token = row["token"]
+        else:
+            api_client.login(row["username"], row["password"])
+
+        # try to get username via api to confirm token works
+        api_client.account_username()
+
+        return api_client
+    except Exception as e:
+        print("row {} failed during authentication, check credential".format(row_index))
+        print(row)
+        print(e)
+        return None
+
+def launch_instance(api_client, instance, row_index):
+    """
+    Launch an instance
+
+    Args:
+        api_client: api_client that has been authenticated
+        row_index: index (row number) in the list of instance, used to report errors
+    """
+    try:
+        instance = Instance(api_client, instance["image"], instance["image_version"], instance["size"], opt=instance)
         instance.launch()
         print("Instance launched, username: {}, id: {}".format(instance.owner, instance.id))
     except Exception as e:
         print("row {} failed".format(row_index))
-        print(row)
+        print(instance)
         print(e)
         instance = None
     return instance
+
+def launched_summary(launched_instances):
+    print("==============================")
+    print("{} instance launched".format(len(launched_instances)))
+    print("\n\n")
 
 if __name__ == '__main__':
     main()
