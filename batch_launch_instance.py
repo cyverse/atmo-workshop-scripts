@@ -310,13 +310,33 @@ class APIClient:
             a tuple of (status, activity)
         """
         try:
-            url = "/api/instances/" + str(instance_id)
+            url = "/api/v2/instances/" + str(instance_id)
             json_obj = self._atmo_get_req(url)
 
             self.last_status = json_obj["status"]
             return (json_obj["status"], json_obj["activity"])
         except HTTPError:
             raise HTTPError("Failed to retrieve instance status")
+
+    def instance_status_v1(self, provider_uuid, identity_uuid, instance_uuid):
+        """
+        Get the status and activiy of the instance
+
+        Args:
+            instance_id: id of the instance
+        Returns:
+            a tuple of (status, activity)
+        """
+        try:
+            url = "/api/v1/provider/{}/identity/{}/instance/{}".format(provider_uuid, identity_uuid, instance_uuid)
+            json_obj = self._atmo_get_req(url)
+
+            self.last_status = json_obj["status"]
+            return (json_obj["status"], json_obj["activity"])
+        except HTTPError:
+            raise HTTPError("Failed to retrieve instance status")
+        except KeyError:
+            raise IncompleteResponse("Failed to retrieve instance status, missing status and activiy from response")
 
     def instance_action(self, proivder_uuid, identity_uuid, instance_uuid, action, reboot_type=""):
         """
@@ -488,7 +508,7 @@ class Instance:
         Returns:
             a tuple of (status, activity)
         """
-        status, activity = self.api_client.instance_status(self.id)
+        status, activity = self.api_client.instance_status_v1(self.provider_uuid, self.identity_uuid, self.uuid)
         self.last_status = status
         return (status, activity)
         
@@ -512,6 +532,9 @@ class Instance:
             self.name = self.api_client.get_image(self.image_id)["name"]
 
         self.instance_json = self.api_client.launch_instance_off_image(self.name, source_uuid, size_entry["alias"], alloc_src["uuid"], project["uuid"], identity["uuid"])
+        self.provider_uuid = self.instance_json["provider"]["uuid"]
+        self.identity_uuid = self.instance_json["identity"]["uuid"]
+        self.uuid = self.instance_json["uuid"]
         self.launch_time = time.mktime(time.localtime())
         self.id = self.instance_json["id"]
 
