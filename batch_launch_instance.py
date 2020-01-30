@@ -28,23 +28,25 @@ cyverse_us_01,Discovery#Science01#,https://atmo.cyverse.org/application/images/1
 
 """
 
-def retry_3(func):
+def retry_3(exception=Exception):
     """
     a decorator that retry function 3 times
     """
-    def inner(*args, **kwargs): 
-        error = None
-        for attempt in range(3):
-            try:
-                return func(*args, **kwargs)
-            except Exception as e:
-                error = e
-                if attempt < 2:
-                    print("Retry")
-                pass
-        else:
-            raise error
-    return inner
+    def inner_wrapper(func):
+        def inner(*args, **kwargs):
+            error = None
+            for attempt in range(3):
+                try:
+                    return func(*args, **kwargs)
+                except exception as e:
+                    error = e
+                    if attempt < 2:
+                        print("Retry")
+                    pass
+            else:
+                raise error
+        return inner
+    return inner_wrapper
 
 
 class APIClient:
@@ -60,6 +62,7 @@ class APIClient:
             raise ValueError("Unknown platform")
         self.token = None
 
+    @retry_3()
     def login(self, username, password):
         """
         Obtain a temp authorization token with username and password.
@@ -82,6 +85,7 @@ class APIClient:
         except KeyError:
             raise IncompleteResponse("Token missing from login")
 
+    @retry_3()
     def list_instance_of_user(self):
         """
         List all instance of an account
@@ -114,6 +118,7 @@ class APIClient:
             raise ValueError("No project with the name of " + name)
         return project
 
+    @retry_3()
     def list_project_of_user(self):
         """
         List all the projects of an account
@@ -124,6 +129,7 @@ class APIClient:
             raise HTTPError(str(e) + " Fail to list all the projects") from e
         return json_obj["results"]
 
+    @retry_3()
     def instance_size_list(self):
         """
         Return a list of instance size supported by the target platform
@@ -150,6 +156,7 @@ class APIClient:
             raise ValueError("No allocation source with the name of " + name)
         return alloc_src
 
+    @retry_3()
     def allocation_source_list(self):
         """
         Returns a list of allocation source of the account
@@ -176,6 +183,7 @@ class APIClient:
                 return id
         raise ValueError("No identity with the username of " + username)
 
+    @retry_3()
     def identity_list(self):
         """
         Returns a list of identity
@@ -201,6 +209,7 @@ class APIClient:
             raise ValueError("No image with the id of " + str(id))
         return img
 
+    @retry_3()
     def image_list(self):
         """
         Returns a list of image
@@ -211,6 +220,7 @@ class APIClient:
             raise HTTPError(str(e) + " Fail to list all images") from e
         return json_obj["results"]
 
+    @retry_3()
     def list_machines_of_image_version(self, image_id, image_version):
         """
         Get a list of machines of the image with the specific version,
@@ -248,7 +258,7 @@ class APIClient:
         except IndexError as e:
             raise IncompleteResponse("Response incomplete") from e
 
-    @retry_3
+    @retry_3()
     def user_profile(self):
         """
         Get the user profile
@@ -262,6 +272,7 @@ class APIClient:
         except JSONDecodeError as e:
             raise IncompleteResponse("Fail to parse response body as JSON") from e
     
+    @retry_3(exception=HTTPError)
     def launch_instance_off_image(self, name, source_uuid, size_alias, alloc_src_uuid, project_uuid, identity_uuid):
         """
         Launch a instance from an image
@@ -300,6 +311,7 @@ class APIClient:
         except HTTPError:
             raise HTTPError("Fail to launch instance with the specified image")
 
+    @retry_3()
     def instance_status(self, instance_id):
         """
         Get the status and activiy of the instance
@@ -318,6 +330,7 @@ class APIClient:
         except HTTPError:
             raise HTTPError("Failed to retrieve instance status")
 
+    @retry_3()
     def instance_status_v1(self, provider_uuid, identity_uuid, instance_uuid):
         """
         Get the status and activiy of the instance
@@ -338,6 +351,7 @@ class APIClient:
         except KeyError:
             raise IncompleteResponse("Failed to retrieve instance status, missing status and activiy from response")
 
+    @retry_3()
     def instance_action(self, proivder_uuid, identity_uuid, instance_uuid, action, reboot_type=""):
         """
         Perform an action on an instance.
@@ -371,6 +385,7 @@ class APIClient:
         except JSONDecodeError:
             raise IncompleteResponse("Fail to parse response body as JSON")
 
+    @retry_3()
     def delete_instance(self, proivder_uuid, identity_uuid, instance_uuid):
         """
         Delete an instance
@@ -500,7 +515,6 @@ class Instance:
         
         self.owner = self.api_client.account_username()
 
-    @retry_3
     def status(self):
         """
         Get the status of the instance.
@@ -610,7 +624,7 @@ def main():
 
     # Check credential
     api_clients = []
-    for row, row_index in enumerate(instance_list):
+    for row_index, row in enumerate(instance_list):
         api_client = account_login(row, row_index)
         # Quit if any row has incorrect credential
         if not api_client:
