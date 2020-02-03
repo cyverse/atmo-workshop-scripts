@@ -87,5 +87,5 @@ this_is_an_access_token,https://use.jetstream-cloud.org/application/images/717,1
 ```
 ```csv
 token,image,image version,instance size,allocation source
-this_is_an_access_token,https://use.jetstream-cloud.org/application/images/717,1.27,m1.tiny,jetstream_user123
+this_is_an_access_token,https://use.jetstream-cloud.org/application/images/717,1.27,m1.tiny,TG-XXX999999
 ```
