@@ -554,6 +554,14 @@ class Instance:
 
     def wait_active(self):
         """
+        Returns:
+            a tuple (succeed or not, id)
+        """
+        result = self._wait_active()
+        return result, self
+
+    def _wait_active(self):
+        """
         Wait for the instance to become fully active (status == "active" && activity == "").
         Check for the instance status every some second
         """
@@ -646,9 +654,9 @@ def main():
         with ThreadPoolExecutor(max_workers=4) as executor:
             futures = [ executor.submit(Instance.wait_active, instance) for instance in launched_instances ]
             for launch in as_completed(futures):
-                if not launch.result():
-                    instance = launch.result()
-                    print("Instance failed to become fully active in time, {}, last_status: {}".format(str(instance), instance.last_status))
+                succeed, instance = launch.result()
+                if not succeed:
+                    print("Instance failed to become fully active in time, {}, {}, last_status: {}".format(instance.owner, str(instance), instance.last_status))
 
 class IncompleteResponse(ValueError):
     pass
