@@ -89,3 +89,27 @@ this_is_an_access_token,https://use.jetstream-cloud.org/application/images/717,1
 token,image,image version,instance size,allocation source
 this_is_an_access_token,https://use.jetstream-cloud.org/application/images/717,1.27,m1.tiny,TG-XXX999999
 ```
+
+### `batch_update_allocation.py`
+
+#### Summary:
+
+Update the allocation unit limit for multiple accounts as admin.
+
+#### Options:
+
+| | |
+|-|-|
+`--csv`         | pass in a csv file containing username and target allocation unit count
+`--token`       | pass a access token of an admin account
+`--jetstream`   | target Jetstream cloud instead of Cyverse Atmosphere
+`--cyverse`     | target Cyverse Atmosphere (default)
+
+#### Descriptions:
+
+Example csv
+```
+username,alloc_unit_count
+cyverse_us_01,500
+```
+
