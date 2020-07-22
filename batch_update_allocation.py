@@ -27,7 +27,7 @@ class APIClient:
     def api_base_url(self):
         return self._api_base_url
 
-    def user_alloc_src_uuid(self, username : str) -> str:
+    def user_alloc_src(self, username : str) -> Tuple[str, int]:
         """
         Get uuid of the 1st allocation source of a given user specified by username
         """
@@ -43,7 +43,7 @@ class APIClient:
         current_au = alloc_src["compute_allowed"]
         print("{}, current AU count: {}".format(username, current_au))
 
-        return uuid
+        return (uuid, current_au)
     
     def update_AU(self, alloc_src_uuid : str, alloc_unit_count : int) -> int:
         """
@@ -147,7 +147,7 @@ class IncompleteResponse(ValueError):
 class CSVError(ValueError):
     pass
 
-def parse_arg() -> Tuple[list, str]:
+def parse_arg() -> Tuple[list, argparse.Namespace]:
     """
     Parse cmd args
     """
@@ -156,12 +156,13 @@ def parse_arg() -> Tuple[list, str]:
     parser.add_argument("--cyverse", dest="cyverse", action="store_true", help="Target platform: Cyverse Atmosphere (default)")
     parser.add_argument("--jetstream", dest="jetstream", action="store_true", help="Target platform: Jetstream")
     parser.add_argument("--token", dest="admin_token", type=str, required=True, help="access token of an admin account")
+    parser.add_argument("--force-set", dest="force_set", action="store_true", help="force set the target AU, even if it is lower than current")
 
     args = parser.parse_args()
 
     rows = read_info_from_csv(args.csv_filename)
 
-    return rows, args.admin_token
+    return rows, args
 
 def read_info_from_csv(filename : str) -> List[Dict[str, Any]]:
     """
@@ -253,7 +254,7 @@ def print_row(row : Dict[str, str]):
     """
     print("username: {}, target allocation unit count: {}".format(row["username"], row["alloc_unit_count"]))
 
-def update_user_AU(admin_token : str, username : str, target_alloc_unit_count : int) -> None:
+def update_user_AU(admin_token : str, username : str, target_alloc_unit_count : int, force_set: bool = False) -> None:
     """
     Update a user's allocation unit limit
     """
@@ -262,12 +263,15 @@ def update_user_AU(admin_token : str, username : str, target_alloc_unit_count : 
 
     try:
         # get uuid of allocation source
-        alloc_src_uuid = client.user_alloc_src_uuid(username)
+        alloc_src_uuid, current_au = client.user_alloc_src(username)
     except Exception as e:
         print(e)
         print("fail to update AU limit")
         return
     try:
+        if target_alloc_unit_count < current_au and not force_set:
+            print("Skipped, target is lower than current AU, uses --force-set to force setting the target AU count")
+            return
         new_au_count = client.update_AU(alloc_src_uuid, target_alloc_unit_count)
         if new_au_count < 0:
             print("Inconsistent response, fail to update AU limit")
@@ -279,10 +283,10 @@ def update_user_AU(admin_token : str, username : str, target_alloc_unit_count : 
         return
 
 def main():
-    rows, admin_token = parse_arg()
+    rows, args = parse_arg()
 
     for row in rows:
-        update_user_AU(admin_token, row["username"], row["alloc_unit_count"])
+        update_user_AU(args.admin_token, row["username"], row["alloc_unit_count"], args.force_set)
 
 if __name__ == '__main__':
     main()

@@ -94,7 +94,7 @@ this_is_an_access_token,https://use.jetstream-cloud.org/application/images/717,1
 
 #### Summary:
 
-Update the allocation unit limit for multiple accounts as admin.
+Update the allocation unit limit for multiple accounts as admin. By default AU count lower than current one is not applied.
 
 #### Options:
 
@@ -104,6 +104,8 @@ Update the allocation unit limit for multiple accounts as admin.
 `--token`       | pass a access token of an admin account
 `--jetstream`   | target Jetstream cloud instead of Cyverse Atmosphere
 `--cyverse`     | target Cyverse Atmosphere (default)
+`--force-set`   | force setting target AU count, even if target is lower than current
+
 
 #### Descriptions:
 
