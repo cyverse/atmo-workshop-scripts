@@ -375,7 +375,7 @@ def get_volume(token, vol_uuid, provider_uuid, identity_uuid):
         resp.raise_for_status()
         json_obj = json.loads(resp.text)
     except requests.exceptions.HTTPError:
-        print("Fail to list all the volumes")
+        print("Fail to get volume {}".format(vol_uuid))
         raise
     except json.decoder.JSONDecodeError:
         print("Fail to parse response body as JSON")
@@ -405,7 +405,7 @@ def get_volume_v2(token, vol_uuid):
         resp.raise_for_status()
         json_obj = json.loads(resp.text)
     except requests.exceptions.HTTPError:
-        print("Fail to list all the volumes")
+        print("Fail to get volume {}".format(vol_uuid))
         raise
     except json.decoder.JSONDecodeError:
         print("Fail to parse response body as JSON")
@@ -480,7 +480,7 @@ def _deattach_volume(token, vol_uuid, provider_uuid, identity_uuid, instance_uui
         resp.raise_for_status()
         json_obj = json.loads(resp.text)
     except requests.exceptions.HTTPError:
-        print("Fail to list all the volumes")
+        print("Fail to deattached volume {} from instance {}".format(vol_uuid, instance_uuid))
         raise
     except json.decoder.JSONDecodeError:
         print("Fail to parse response body as JSON")
@@ -518,7 +518,7 @@ def reboot_instance(token, instance_json):
         json_formatted_str = json.dumps(json_obj, indent=2)
         print(json_formatted_str)
     except requests.exceptions.HTTPError:
-        print("Fail to list all the volumes")
+        print("Fail to reboot instance {}".format(instance_json["uuid"]))
         raise
     except json.decoder.JSONDecodeError:
         print("Fail to parse response body as JSON")
@@ -550,7 +550,7 @@ def delete_instance(token, instance_json):
         json_formatted_str = json.dumps(json_obj, indent=2)
         print(json_formatted_str)
     except requests.exceptions.HTTPError:
-        print("Fail to list all the volumes")
+        print("Fail to delete instance {}".format(instance_json["uuid"]))
         raise
     except json.decoder.JSONDecodeError:
         print("Fail to parse response body as JSON")
@@ -582,7 +582,7 @@ def delete_project(token, project_json):
             print("Deleted instance")
             print(json_formatted_str)
     except requests.exceptions.HTTPError:
-        print("Fail to list all the volumes")
+        print("Fail to delete project {}".format(project_json["id"]))
         raise
     except json.decoder.JSONDecodeError:
         print("Fail to parse response body as JSON")
@@ -615,7 +615,7 @@ def delete_volume(token, volume_json):
         print("Deleted volume")
         print(json_formatted_str)
     except requests.exceptions.HTTPError:
-        print("Fail to list all the volumes")
+        print("Fail to delete volume {}".format(volume_json["uuid"]))
         raise
     except json.decoder.JSONDecodeError:
         print("Fail to parse response body as JSON")
