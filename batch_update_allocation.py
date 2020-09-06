@@ -13,7 +13,7 @@ class APIClient:
     def __init__(self, token, platform="cyverse"):
         self._token = token
         if platform == "cyverse":
-            self._api_base_url = "atmo-36.cyverse.org"
+            self._api_base_url = "atmo.cyverse.org"
         elif platform == "jetstream":
             self._api_base_url = "use.jetstream-cloud.org"
         else:

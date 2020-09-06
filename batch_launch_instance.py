@@ -57,7 +57,7 @@ class APIClient:
         if platform == "jetstream":
             self.api_base_url = "use.jetstream-cloud.org"
         elif platform == "cyverse":
-            self.api_base_url = "atmo-36.cyverse.org"
+            self.api_base_url = "atmo.cyverse.org"
         else:
             raise ValueError("Unknown platform")
         self.token = None
