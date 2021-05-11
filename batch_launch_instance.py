@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import logging
 import requests
 import json
 import csv
@@ -7,6 +8,7 @@ import argparse
 import sys
 import getpass
 import time
+import datetime
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import as_completed
 from requests.exceptions import HTTPError
@@ -117,6 +119,27 @@ class APIClient:
         if not project:
             raise ValueError("No project with the name of " + name)
         return project
+
+    def create_project_if_not_exist(self, name):
+        try:
+            proj = self.get_project(name)
+        except ValueError:
+            proj = self.create_project(name)
+        return proj
+
+    @retry_3()
+    def create_project(self, name):
+        """
+        create project with given name
+        """
+        try:
+            data = {}
+            data["owner"] = self.account_username()
+            data["name"] = name
+            json_obj = self._atmo_post_req("/api/v2/projects", json_data=data)
+        except HTTPError as e:
+            raise HTTPError(str(e) + " Fail to create the project") from e
+        return json_obj
 
     @retry_3()
     def list_project_of_user(self):
@@ -516,6 +539,7 @@ class Instance:
                 self.alloc_src = opt["alloc_src"]
         
         self.owner = self.api_client.account_username()
+        self.last_status = None
 
     def status(self):
         """
@@ -542,11 +566,10 @@ class Instance:
                 alloc_src = self.api_client.get_allocation_source(self.alloc_src)
             else:
                 alloc_src = self.api_client.get_allocation_source(self.owner)
-            # if self.project:
-            #     project = self.api_client.get_project(self.project)
-            # else:
-            #     project = self.api_client.get_project(self.owner)
-            project = self.api_client.get_project(self.owner)
+            if self.project:
+                project = self.api_client.create_project_if_not_exist(self.project)
+            else:
+                project = self.api_client.create_project_if_not_exist(self.owner)
             identity = self.api_client.get_identity(self.owner)
             source_uuid = self.api_client.list_machines_of_image_version(self.image_id, self.image_version)[0]["uuid"]
             if not self.name:
@@ -568,13 +591,14 @@ class Instance:
         Returns:
             a tuple (succeed or not, id)
         """
-        result = self._wait_active()
+        result = self._wait_active(timeout=2000)
         return result, self
 
-    def _wait_active(self):
+    def _wait_active(self, timeout=1800):
         """
         Wait for the instance to become fully active (status == "active" && activity == "").
-        Check for the instance status every some second
+        Check for the instance status every some second.
+        Timeout after 30min by default.
         """
         status = ""
         acivity = ""
@@ -591,7 +615,7 @@ class Instance:
 
             # timeout after 30min
             curr_time = time.mktime(time.localtime())
-            if curr_time - self.launch_time > 1800:
+            if curr_time - self.launch_time > timeout:
                 return False
 
             # error or deploy_error
@@ -640,6 +664,9 @@ def main():
     instance_list = parse_args()
 
     launched_instances = []
+    state_filename = "batch_launched-{}.state.csv".format(datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S"))
+    with open(state_filename, "w+"):
+        pass
 
     # Check credential
     api_clients = []
@@ -659,6 +686,7 @@ def main():
                 launched_instances.append(instance_json)
 
     launched_summary(launched_instances)
+    upadte_launched_state_file(state_filename, launched_instances)
 
     if not args.dont_wait:
         # wait for instance to be active
@@ -668,6 +696,8 @@ def main():
                 succeed, instance = launch.result()
                 if not succeed:
                     print("Instance failed to become fully active in time, {}, {}, last_status: {}".format(instance.owner, str(instance), instance.last_status))
+
+        upadte_launched_state_file(state_filename, launched_instances)
 
 class IncompleteResponse(ValueError):
     pass
@@ -904,6 +934,56 @@ def launched_summary(launched_instances):
     print("==============================")
     print("{} instance launched".format(len(launched_instances)))
     print("\n\n")
+
+def upadte_launched_state_file(state_filename, launched_instances):
+
+    instance_states = dict()
+    with open(state_filename) as csvfile:
+        csv_reader = csv.reader(csvfile)
+        try:
+            for row_index, row in enumerate(csv_reader):
+                # ignore header line
+                if row_index == 0:
+                    continue
+                if len(row) != 5:
+                    print("missing field in state file line {}, require 5 fields, has {}", row_index, len(row))
+                    continue
+                inst = dict()
+                inst["username"] = row[0]
+                inst["instance_uuid"] = row[1]
+                inst["provider_uuid"] = row[2]
+                inst["identity_uuid"] = row[3]
+                inst["last_status"] = row[4]
+                instance_states[row[1]] = inst
+        except:
+            exit(1)
+
+    for instance in launched_instances:
+        if instance.uuid not in instance_states:
+            instance_states[instance.uuid] = dict()
+            inst = dict()
+            inst["username"] = instance.owner
+            inst["instance_uuid"] = instance.uuid
+            inst["provider_uuid"] = instance.provider_uuid
+            inst["identity_uuid"] = instance.identity_uuid
+            inst["last_status"] = instance.last_status
+            instance_states[instance.uuid] = inst
+        else:
+            instance_states[instance.uuid]["last_status"] = instance.last_status
+
+    with open(state_filename, 'w') as csvfile:
+        csv_writer = csv.writer(csvfile)
+        csv_writer.writerow(["username", "instance_uuid", "provider_uuid", "identity_uuid", "last_status"])
+        for instance_uuid in instance_states:
+            inst = instance_states[instance_uuid]
+            csv_writer.writerow([
+                inst["username"],
+                inst["instance_uuid"],
+                inst["provider_uuid"],
+                inst["identity_uuid"],
+                inst["last_status"]
+                ])
+
 
 if __name__ == '__main__':
     main()
