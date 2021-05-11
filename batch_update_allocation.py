@@ -266,7 +266,7 @@ def update_user_AU(admin_token : str, username : str, target_alloc_unit_count : 
         alloc_src_uuid, current_au = client.user_alloc_src(username)
     except Exception as e:
         print(e)
-        print("fail to update AU limit")
+        print("{}, fail to update AU limit".format(username))
         return
     try:
         if target_alloc_unit_count < current_au and not force_set:
@@ -279,7 +279,7 @@ def update_user_AU(admin_token : str, username : str, target_alloc_unit_count : 
             print("{}, new AU count: {}".format(username, new_au_count))
     except Exception as e:
         print(e)
-        print("fail to update AU limit")
+        print("{}, fail to update AU limit".format(username))
         return
 
 def main():
