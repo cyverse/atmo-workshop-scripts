@@ -462,6 +462,8 @@ class APIClient:
             resp.raise_for_status()
             json_obj = json.loads(resp.text)
         except JSONDecodeError:
+            if json_data:
+                print(json_data)
             raise IncompleteResponse("Fail to parse response body as JSON")
         return json_obj
 
@@ -530,27 +532,36 @@ class Instance:
         """
         Launch the instance with all the given parameters
         """
-        size_list = self.api_client.instance_size_list()
-        size_entry = list_contains(size_list, "name", self.size)
-        if not size_entry:
-            raise ValueError("Invalid size")
+        try:
+            size_list = self.api_client.instance_size_list()
+            size_entry = list_contains(size_list, "name", self.size)
+            if not size_entry:
+                raise ValueError("Invalid size")
 
-        if self.alloc_src:
-            alloc_src = self.api_client.get_allocation_source(self.alloc_src)
-        else:
-            alloc_src = self.api_client.get_allocation_source(self.owner)
-        project = self.api_client.get_project(self.owner)
-        identity = self.api_client.get_identity(self.owner)
-        source_uuid = self.api_client.list_machines_of_image_version(self.image_id, self.image_version)[0]["uuid"]
-        if not self.name:
-            self.name = self.api_client.get_image(self.image_id)["name"]
+            if self.alloc_src:
+                alloc_src = self.api_client.get_allocation_source(self.alloc_src)
+            else:
+                alloc_src = self.api_client.get_allocation_source(self.owner)
+            # if self.project:
+            #     project = self.api_client.get_project(self.project)
+            # else:
+            #     project = self.api_client.get_project(self.owner)
+            project = self.api_client.get_project(self.owner)
+            identity = self.api_client.get_identity(self.owner)
+            source_uuid = self.api_client.list_machines_of_image_version(self.image_id, self.image_version)[0]["uuid"]
+            if not self.name:
+                self.name = self.api_client.get_image(self.image_id)["name"]
 
-        self.instance_json = self.api_client.launch_instance_off_image(self.name, source_uuid, size_entry["alias"], alloc_src["uuid"], project["uuid"], identity["uuid"])
-        self.provider_uuid = self.instance_json["provider"]["uuid"]
-        self.identity_uuid = self.instance_json["identity"]["uuid"]
-        self.uuid = self.instance_json["uuid"]
-        self.launch_time = time.mktime(time.localtime())
-        self.id = self.instance_json["id"]
+            print(self.name, source_uuid, size_entry["alias"], alloc_src["uuid"], project["uuid"], identity["uuid"])
+            self.instance_json = self.api_client.launch_instance_off_image(self.name, source_uuid, size_entry["alias"], alloc_src["uuid"], project["uuid"], identity["uuid"])
+            self.provider_uuid = self.instance_json["provider"]["uuid"]
+            self.identity_uuid = self.instance_json["identity"]["uuid"]
+            self.uuid = self.instance_json["uuid"]
+            self.launch_time = time.mktime(time.localtime())
+            self.id = self.instance_json["id"]
+        except Exception as exc:
+            print(exc)
+            raise exc
 
     def wait_active(self):
         """
@@ -619,7 +630,7 @@ class Instance:
             raise HTTPError(str(e) + "Fail to reboot instance")
        
     def __str__(self):
-        if self.id:
+        if hasattr(self, "id") and self.id:
             return "username: {}, id: {}, uuid: {}".format(self.owner, self.id, self.instance_json["uuid"])
         else:
             return "username: {}, image id: {}, image version: {}, size: {}".format(self.owner, self.image_id, self.image_version, self.size)
